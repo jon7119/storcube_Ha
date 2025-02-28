@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -11,7 +12,9 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_PASSWORD,
 )
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
@@ -22,6 +25,12 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+class CannotConnect(HomeAssistantError):
+    """Error to indicate we cannot connect."""
+
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid auth."""
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -35,30 +44,37 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+    """Validate the user input allows us to connect."""
+    # TODO: Validate the data can be used to set up a connection.
+    return {"title": f"StorCube Battery Monitor ({data[CONF_HOST]})"}
+
 class StorCubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Gérer le flux de configuration."""
 
     VERSION = 1
 
     async def async_step_user(
-        self, user_input: dict[str, any] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Gérer le flux de configuration initié par l'utilisateur."""
         errors = {}
 
         if user_input is not None:
             try:
-                # Créer l'entrée de configuration
+                info = await validate_input(self.hass, user_input)
                 return self.async_create_entry(
-                    title=f"StorCube Battery Monitor ({user_input[CONF_HOST]})",
+                    title=info["title"],
                     data=user_input,
                 )
-
-            except Exception as err:
-                _LOGGER.error("Erreur lors de la configuration: %s", err)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # Afficher le formulaire
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
