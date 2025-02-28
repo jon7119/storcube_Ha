@@ -29,30 +29,41 @@ Cette intégration permet de connecter votre batterie Storcube à Home Assistant
 
 ### Option 1 : Via HACS (recommandé)
 
-1. Assurez-vous d'avoir [HACS](https://hacs.xyz/) installé
-2. Allez dans HACS > Intégrations
-3. Cliquez sur les 3 points en haut à droite et choisissez "Dépôts personnalisés"
-4. Ajoutez `https://github.com/jon7119/storcube_Ha` comme dépôt personnalisé
-5. Catégorie : Integration
-6. Cliquez sur "Storcube Battery Monitor" dans la liste
-7. Cliquez sur "Télécharger"
-8. Redémarrez Home Assistant
+1. **Installation de HACS** (si pas déjà fait) :
+   - Suivez le [guide d'installation de HACS](https://hacs.xyz/docs/setup/download)
+   - Redémarrez Home Assistant après l'installation
+
+2. **Ajout du dépôt personnalisé** :
+   - Ouvrez HACS dans Home Assistant
+   - Allez dans l'onglet "Intégrations"
+   - Cliquez sur le menu (3 points) en haut à droite
+   - Sélectionnez "Dépôts personnalisés"
+   - Collez l'URL : `https://github.com/jon7119/storcube_Ha`
+   - Sélectionnez la catégorie : "Integration"
+   - Cliquez sur "Ajouter"
+
+3. **Installation de l'intégration** :
+   - Rafraîchissez la page HACS si nécessaire
+   - Recherchez "Storcube Battery Monitor"
+   - Cliquez sur "Télécharger"
+   - Redémarrez Home Assistant
 
 ### Option 2 : Installation manuelle
 
 1. Téléchargez la dernière version depuis [GitHub](https://github.com/jon7119/storcube_Ha)
-2. Copiez le dossier `custom_components/storcube_ha` dans votre dossier `custom_components` de Home Assistant
-3. Redémarrez Home Assistant
+2. Décompressez l'archive
+3. Copiez le dossier `custom_components/storcube_ha` dans le dossier `custom_components` de votre installation Home Assistant
+4. Redémarrez Home Assistant
 
 ## Configuration
 
-Après l'installation :
+Après l'installation (via HACS ou manuellement) :
 
 1. Dans Home Assistant, allez dans Configuration > Intégrations
 2. Cliquez sur le bouton "+" pour ajouter une nouvelle intégration
 3. Recherchez "Storcube Battery Monitor"
 4. Remplissez les informations requises :
-   - Adresse du broker MQTT
+   - Adresse du broker MQTT (ex: 192.168.1.xxx)
    - Port MQTT (par défaut : 1883)
    - Device ID (sur l'étiquette de votre batterie)
    - App Code (par défaut : Storcube)

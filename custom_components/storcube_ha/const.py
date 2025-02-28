@@ -1,6 +1,7 @@
 """Constants for the Storcube Battery Monitor integration."""
 
 DOMAIN = "storcube_ha"
+NAME = "Storcube Battery Monitor"
 
 # Configuration constants
 CONF_DEVICE_ID = "device_id"

@@ -1,27 +1,50 @@
-# StorCube Battery Monitor pour Home Assistant
+# Storcube Battery Monitor
 
-Cette intégration personnalisée permet de surveiller l'état d'une batterie solaire Storcube via MQTT dans Home Assistant.
+## Installation via HACS
 
-## Caractéristiques
+1. **Prérequis** :
+   - [HACS](https://hacs.xyz/) doit être installé dans votre Home Assistant
+   - Un broker MQTT configuré et fonctionnel
+   - Vos identifiants Baterway (Login et Password)
+   - Le Device ID de votre batterie Storcube
 
-- Connexion MQTT automatique
-- Surveillance en temps réel des données de la batterie :
-  - Puissance solaire en entrée
-  - Capacité restante de la batterie
-  - Puissance délivrée par l'onduleur
-  - État de la connexion MQTT
-- Carte Lovelace personnalisée avec affichage graphique
+2. **Ajout du dépôt** :
+   - Dans Home Assistant, ouvrez HACS
+   - Allez dans l'onglet "Intégrations"
+   - Cliquez sur le menu (3 points) en haut à droite
+   - Sélectionnez "Dépôts personnalisés"
+   - Collez l'URL : `https://github.com/jon7119/storcube_Ha`
+   - Choisissez la catégorie : "Integration"
+   - Cliquez sur "Ajouter"
 
-## Configuration
+3. **Installation** :
+   - Rafraîchissez la page HACS si nécessaire
+   - Recherchez "Storcube Battery Monitor"
+   - Cliquez sur "Télécharger"
+   - Redémarrez Home Assistant
 
-1. Allez dans Configuration > Intégrations
-2. Cliquez sur le bouton "+" pour ajouter une nouvelle intégration
-3. Recherchez "Storcube Battery Monitor"
-4. Remplissez les informations requises :
-   - Adresse du broker MQTT
-   - Port MQTT
-   - Nom d'utilisateur MQTT
-   - Mot de passe MQTT
-   - Code de l'application
-   - Nom de connexion
-   - Mot de passe de l'appareil 
+4. **Configuration** :
+   - Allez dans Configuration > Intégrations
+   - Cliquez sur "Ajouter une intégration"
+   - Recherchez "Storcube Battery Monitor"
+   - Remplissez les informations :
+     - Broker MQTT (ex: 192.168.1.xxx)
+     - Port MQTT (défaut: 1883)
+     - Device ID (sur l'étiquette de votre batterie)
+     - App Code (défaut: Storcube)
+     - Login Baterway
+     - Password Baterway
+     - Identifiants MQTT
+
+## Capteurs disponibles
+
+- Niveau de batterie (%)
+- Puissance actuelle (W)
+- Seuil de batterie (%)
+- État de la batterie
+- Version du firmware
+
+## Support
+
+- [Documentation](https://github.com/jon7119/storcube_Ha)
+- [Signaler un problème](https://github.com/jon7119/storcube_Ha/issues) 

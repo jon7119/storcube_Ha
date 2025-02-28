@@ -2,56 +2,39 @@
     "config": {
         "step": {
             "user": {
-                "title": "Configuration StorCube Battery Monitor",
-                "description": "Configurez votre connexion MQTT et les identifiants StorCube",
+                "title": "Configuration de la batterie Storcube",
+                "description": "Configurez votre batterie Storcube avec Home Assistant",
                 "data": {
                     "host": "Adresse du broker MQTT",
                     "port": "Port MQTT",
+                    "device_id": "Identifiant de la batterie (Device ID)",
+                    "app_code": "Code de l'application (par défaut: Storcube)",
+                    "login_name": "Nom d'utilisateur Baterway",
+                    "auth_password": "Mot de passe Baterway",
                     "username": "Nom d'utilisateur MQTT",
-                    "password": "Mot de passe MQTT",
-                    "app_code": "Code de l'application",
-                    "login_name": "Nom de connexion",
-                    "device_password": "Mot de passe de l'appareil"
-                },
-                "data_description": {
-                    "host": "L'adresse IP de votre broker MQTT (ex: 192.168.1.155)",
-                    "port": "Le port de votre broker MQTT (par défaut: 1883)",
-                    "username": "Le nom d'utilisateur pour se connecter au broker MQTT",
-                    "password": "Le mot de passe pour se connecter au broker MQTT",
-                    "app_code": "Le code de l'application fourni par Storcube",
-                    "login_name": "Votre nom de connexion Storcube",
-                    "device_password": "Votre mot de passe Storcube"
+                    "password": "Mot de passe MQTT"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Impossible de se connecter au broker MQTT",
+            "cannot_connect": "Échec de connexion au serveur Baterway",
             "invalid_auth": "Authentification invalide",
             "unknown": "Erreur inattendue"
         },
         "abort": {
-            "already_configured": "L'appareil est déjà configuré"
+            "already_configured": "Cette batterie est déjà configurée"
         }
     },
-    "services": {
-        "set_power": {
-            "name": "Définir la puissance",
-            "description": "Définit la puissance de sortie de la batterie.",
-            "fields": {
-                "power": {
-                    "name": "Puissance",
-                    "description": "Puissance en watts (W)"
-                }
-            }
-        },
-        "set_threshold": {
-            "name": "Définir le seuil",
-            "description": "Définit le seuil de décharge de la batterie.",
-            "fields": {
-                "threshold": {
-                    "name": "Seuil",
-                    "description": "Seuil en pourcentage (0-100)"
-                }
+    "entity": {
+        "sensor": {
+            "battery_level": {
+                "name": "Niveau de batterie"
+            },
+            "power": {
+                "name": "Puissance"
+            },
+            "threshold": {
+                "name": "Seuil de batterie"
             }
         }
     }

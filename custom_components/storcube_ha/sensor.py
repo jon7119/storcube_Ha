@@ -1,4 +1,4 @@
-"""Support for Battery MQTT sensors."""
+"""Support for Storcube Battery Monitor sensors."""
 from __future__ import annotations
 
 import logging
@@ -29,6 +29,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
     DOMAIN,
+    NAME,
     CONF_DEVICE_ID,
     CONF_APP_CODE,
     CONF_LOGIN_NAME,
@@ -55,9 +56,9 @@ async def async_setup_entry(
 
     # Create battery sensors
     sensors = [
-        BatteryLevelSensor(config),
-        BatteryPowerSensor(config),
-        BatteryThresholdSensor(config),
+        StorcubeBatteryLevelSensor(config),
+        StorcubePowerSensor(config),
+        StorcubeThresholdSensor(config),
     ]
 
     async_add_entities(sensors)
@@ -65,12 +66,12 @@ async def async_setup_entry(
     # Start websocket connection
     asyncio.create_task(websocket_to_mqtt(hass, config))
 
-class BatteryLevelSensor(SensorEntity):
-    """Representation of a Battery Level Sensor."""
+class StorcubeBatteryLevelSensor(SensorEntity):
+    """Representation of a Storcube Battery Level Sensor."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        self._attr_name = "Battery Level"
+        self._attr_name = "Niveau Batterie Storcube"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -87,12 +88,12 @@ class BatteryLevelSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating battery level: %s", e)
 
-class BatteryPowerSensor(SensorEntity):
-    """Representation of a Battery Power Sensor."""
+class StorcubePowerSensor(SensorEntity):
+    """Representation of a Storcube Power Sensor."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        self._attr_name = "Battery Power"
+        self._attr_name = "Puissance Storcube"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -109,12 +110,12 @@ class BatteryPowerSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating power: %s", e)
 
-class BatteryThresholdSensor(SensorEntity):
-    """Representation of a Battery Threshold Sensor."""
+class StorcubeThresholdSensor(SensorEntity):
+    """Representation of a Storcube Threshold Sensor."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        self._attr_name = "Battery Threshold"
+        self._attr_name = "Seuil Batterie Storcube"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT

@@ -1,0 +1,41 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Storcube Battery Configuration",
+                "description": "Set up your Storcube battery with Home Assistant",
+                "data": {
+                    "host": "MQTT Broker Address",
+                    "port": "MQTT Port",
+                    "device_id": "Battery ID (Device ID)",
+                    "app_code": "Application Code (default: Storcube)",
+                    "login_name": "Baterway Username",
+                    "auth_password": "Baterway Password",
+                    "username": "MQTT Username",
+                    "password": "MQTT Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Failed to connect to Baterway server",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "abort": {
+            "already_configured": "This battery is already configured"
+        }
+    },
+    "entity": {
+        "sensor": {
+            "battery_level": {
+                "name": "Battery Level"
+            },
+            "power": {
+                "name": "Power"
+            },
+            "threshold": {
+                "name": "Battery Threshold"
+            }
+        }
+    }
+} 
