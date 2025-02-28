@@ -15,9 +15,10 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_PASSWORD,
 )
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.device_registry import DeviceRegistry
 from homeassistant.helpers import device_registry as dr
+from homeassistant.components import mqtt
 
 from .const import (
     DOMAIN,
@@ -34,6 +35,10 @@ from .const import (
     TOPIC_BATTERY_COMMAND,
     TOPIC_BATTERY_SET_POWER,
     TOPIC_BATTERY_SET_THRESHOLD,
+    MQTT_TOPIC_PREFIX,
+    MQTT_TOPIC_STATUS,
+    MQTT_TOPIC_POWER,
+    MQTT_TOPIC_SOLAR,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,38 +62,47 @@ MQTT_ERROR_CODES = {
     5: "Non autorisé",
 }
 
-class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
-    """Classe pour coordonner les mises à jour des données de la batterie."""
+class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
+    """Class to manage fetching StorCube data."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         *,
-        config_entry,
-        update_interval: timedelta,
+        entry_id: str,
     ) -> None:
-        """Initialiser le coordinateur."""
+        """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=update_interval,
+            update_interval=timedelta(seconds=30),
         )
-
+        self.entry_id = entry_id
+        self._topics = {
+            "status": MQTT_TOPIC_STATUS,
+            "power": MQTT_TOPIC_POWER,
+            "solar": MQTT_TOPIC_SOLAR,
+        }
+        self.data = {
+            "battery_level": 0,
+            "battery_power": 0,
+            "solar_power": 0,
+            "temperature": 0,
+            "status": "unknown",
+        }
         self.hass = hass
-        self.config_entry = config_entry
         self.mqtt_client = None
         self.ws = None
-        self.data = {}  # Données indexées par equipId
         self._connection_error = None
         self._auth_token = None
         self._ws_task = None
         self._known_devices = set()  # Ensemble des equipIds connus
         
         _LOGGER.info("Initialisation du coordinateur Storcube avec les paramètres: host=%s, port=%s, username=%s",
-                    config_entry.data[CONF_HOST],
-                    config_entry.data[CONF_PORT],
-                    config_entry.data[CONF_USERNAME])
+                    hass.data[DOMAIN][entry_id][CONF_HOST],
+                    hass.data[DOMAIN][entry_id][CONF_PORT],
+                    hass.data[DOMAIN][entry_id][CONF_USERNAME])
 
     def _get_device_info(self, equip_id, battery_data):
         """Créer les informations de l'appareil pour une batterie."""
@@ -107,7 +121,7 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
             device_info = self._get_device_info(equip_id, battery_data)
             
             device_registry.async_get_or_create(
-                config_entry_id=self.config_entry.entry_id,
+                config_entry_id=self.entry_id,
                 **device_info,
             )
             
@@ -140,13 +154,13 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
         """Récupérer le token d'authentification."""
         try:
             token_credentials = {
-                "appCode": self.config_entry.data[CONF_APP_CODE],
-                "loginName": self.config_entry.data[CONF_LOGIN_NAME],
-                "password": self.config_entry.data[CONF_DEVICE_PASSWORD]
+                "appCode": self.hass.data[DOMAIN][self.entry_id][CONF_APP_CODE],
+                "loginName": self.hass.data[DOMAIN][self.entry_id][CONF_LOGIN_NAME],
+                "password": self.hass.data[DOMAIN][self.entry_id][CONF_DEVICE_PASSWORD]
             }
             _LOGGER.debug("Tentative d'authentification avec: appCode=%s, loginName=%s",
-                         self.config_entry.data[CONF_APP_CODE],
-                         self.config_entry.data[CONF_LOGIN_NAME])
+                         self.hass.data[DOMAIN][self.entry_id][CONF_APP_CODE],
+                         self.hass.data[DOMAIN][self.entry_id][CONF_LOGIN_NAME])
             
             headers = {'Content-Type': 'application/json'}
             response = requests.post(TOKEN_URL, json=token_credentials, headers=headers)
@@ -171,7 +185,7 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
         headers = {
             "Authorization": self._auth_token,
             "Content-Type": "application/json",
-            "appCode": self.config_entry.data[CONF_APP_CODE]
+            "appCode": self.hass.data[DOMAIN][self.entry_id][CONF_APP_CODE]
         }
         params = {
             "equipId": list(self._known_devices)[0] if self._known_devices else None,  # Utilise la première batterie détectée
@@ -205,7 +219,7 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
         headers = {
             "Authorization": self._auth_token,
             "Content-Type": "application/json",
-            "appCode": self.config_entry.data[CONF_APP_CODE]
+            "appCode": self.hass.data[DOMAIN][self.entry_id][CONF_APP_CODE]
         }
 
         equip_id = list(self._known_devices)[0] if self._known_devices else None
@@ -233,26 +247,44 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
         return False
 
     async def _async_update_data(self):
-        """Mettre à jour les données depuis MQTT."""
-        _LOGGER.debug("Mise à jour des données demandée")
-        if self._connection_error:
-            _LOGGER.error("Erreur de connexion existante: %s", self._connection_error)
-            raise ConfigEntryAuthFailed(self._connection_error)
-            
-        if not self.mqtt_client or not self.mqtt_client.is_connected():
-            _LOGGER.info("Configuration MQTT nécessaire")
-            await self._setup_mqtt()
-
-        if not self._auth_token:
-            self._auth_token = self.get_auth_token()
-            if not self._auth_token:
-                raise ConfigEntryAuthFailed("Impossible de récupérer le token d'authentification")
-
-        if not self._ws_task:
-            self._ws_task = asyncio.create_task(self._websocket_listener())
-
-        _LOGGER.debug("Données actuelles: %s", self.data)
+        """Update data via MQTT."""
         return self.data
+
+    async def async_mqtt_message_received(self, msg):
+        """Handle received MQTT message."""
+        topic = msg.topic
+        payload = msg.payload
+        try:
+            data = json.loads(payload)
+            if "status" in topic:
+                self.data["status"] = "online" if data.get("value") == 1 else "offline"
+            elif "power" in topic:
+                self.data["battery_power"] = float(data.get("value", 0))
+            elif "solar" in topic:
+                self.data["solar_power"] = float(data.get("value", 0))
+            
+            # Notifier Home Assistant que les données ont changé
+            self.async_set_updated_data(self.data)
+        except json.JSONDecodeError:
+            _LOGGER.error("Erreur lors du décodage du message MQTT: %s", payload)
+        except ValueError:
+            _LOGGER.error("Valeur invalide dans le message MQTT: %s", payload)
+
+    async def async_setup(self):
+        """Set up the coordinator."""
+        try:
+            # S'abonner aux topics MQTT
+            for topic in self._topics.values():
+                await mqtt.async_subscribe(
+                    self.hass,
+                    topic,
+                    self.async_mqtt_message_received,
+                    0,
+                )
+            return True
+        except Exception as err:
+            _LOGGER.error("Erreur lors de la configuration MQTT: %s", err)
+            raise ConfigEntryNotReady from err
 
     async def _websocket_listener(self):
         """Écouter les données WebSocket et les publier sur MQTT."""
@@ -343,7 +375,7 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Déconnexion du client MQTT existant")
             self.mqtt_client.disconnect()
 
-        self.mqtt_client = mqtt.Client(client_id=f"ha-storcube-{self.config_entry.entry_id}")
+        self.mqtt_client = mqtt.Client(client_id=f"ha-storcube-{self.entry_id}")
         
         def on_connect(client, userdata, flags, rc):
             """Callback lors de la connexion."""
@@ -357,7 +389,7 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 if rc in [4, 5]:
                     _LOGGER.error("Vérifiez vos identifiants MQTT (nom d'utilisateur: %s)", 
-                                self.config_entry.data[CONF_USERNAME])
+                                self.hass.data[DOMAIN][self.entry_id][CONF_USERNAME])
 
         def on_disconnect(client, userdata, rc):
             """Callback lors de la déconnexion."""
@@ -395,18 +427,18 @@ class StorcubeDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Configuration de l'authentification MQTT")
             self.mqtt_client.username_pw_set(
-                self.config_entry.data[CONF_USERNAME],
-                self.config_entry.data[CONF_PASSWORD],
+                self.hass.data[DOMAIN][self.entry_id][CONF_USERNAME],
+                self.hass.data[DOMAIN][self.entry_id][CONF_PASSWORD],
             )
             
             _LOGGER.info("Tentative de connexion à %s:%s avec l'utilisateur %s",
-                       self.config_entry.data[CONF_HOST],
-                       self.config_entry.data[CONF_PORT],
-                       self.config_entry.data[CONF_USERNAME])
+                       self.hass.data[DOMAIN][self.entry_id][CONF_HOST],
+                       self.hass.data[DOMAIN][self.entry_id][CONF_PORT],
+                       self.hass.data[DOMAIN][self.entry_id][CONF_USERNAME])
             
             self.mqtt_client.connect(
-                self.config_entry.data[CONF_HOST],
-                self.config_entry.data[CONF_PORT],
+                self.hass.data[DOMAIN][self.entry_id][CONF_HOST],
+                self.hass.data[DOMAIN][self.entry_id][CONF_PORT],
             )
             self.mqtt_client.loop_start()
             _LOGGER.info("Boucle MQTT démarrée")

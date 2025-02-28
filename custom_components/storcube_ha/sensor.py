@@ -9,17 +9,21 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfPower,
     UnitOfEnergy,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
     ICON_BATTERY,
     ICON_SOLAR,
     ICON_INVERTER,
+    ICON_TEMPERATURE,
 )
+from .coordinator import StorCubeDataUpdateCoordinator
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -27,17 +31,24 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the StorCube Battery Monitor sensors."""
+    coordinator = StorCubeDataUpdateCoordinator(hass, entry_id=config_entry.entry_id)
+    await coordinator.async_setup()
+    await coordinator.async_config_entry_first_refresh()
+
     async_add_entities([
-        StorCubeBatteryLevel(config_entry),
-        StorCubeSolarPower(config_entry),
-        StorCubeBatteryPower(config_entry),
+        StorCubeBatteryLevel(coordinator, config_entry),
+        StorCubeSolarPower(coordinator, config_entry),
+        StorCubeBatteryPower(coordinator, config_entry),
+        StorCubeTemperature(coordinator, config_entry),
+        StorCubeStatus(coordinator, config_entry),
     ])
 
-class StorCubeBaseSensor(SensorEntity):
+class StorCubeBaseSensor(CoordinatorEntity, SensorEntity):
     """Base class for StorCube sensors."""
 
     def __init__(
         self,
+        coordinator: StorCubeDataUpdateCoordinator,
         config_entry: ConfigEntry,
         name: str,
         icon: str,
@@ -46,6 +57,7 @@ class StorCubeBaseSensor(SensorEntity):
         unit: str | None = None,
     ) -> None:
         """Initialize the sensor."""
+        super().__init__(coordinator)
         self._config = config_entry
         self._attr_name = f"StorCube {name}"
         self._attr_unique_id = f"{config_entry.entry_id}_{name.lower().replace(' ', '_')}"
@@ -67,9 +79,10 @@ class StorCubeBaseSensor(SensorEntity):
 class StorCubeBatteryLevel(StorCubeBaseSensor):
     """Sensor for battery level."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(
+            coordinator,
             config_entry,
             "Battery Level",
             ICON_BATTERY,
@@ -81,14 +94,15 @@ class StorCubeBatteryLevel(StorCubeBaseSensor):
     @property
     def native_value(self):
         """Return the battery level."""
-        return 50  # À remplacer par la vraie valeur
+        return self.coordinator.data["battery_level"]
 
 class StorCubeSolarPower(StorCubeBaseSensor):
     """Sensor for solar power input."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(
+            coordinator,
             config_entry,
             "Solar Power",
             ICON_SOLAR,
@@ -100,14 +114,15 @@ class StorCubeSolarPower(StorCubeBaseSensor):
     @property
     def native_value(self):
         """Return the solar power."""
-        return 0  # À remplacer par la vraie valeur
+        return self.coordinator.data["solar_power"]
 
 class StorCubeBatteryPower(StorCubeBaseSensor):
     """Sensor for battery power output."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(
+            coordinator,
             config_entry,
             "Battery Power",
             ICON_INVERTER,
@@ -119,4 +134,41 @@ class StorCubeBatteryPower(StorCubeBaseSensor):
     @property
     def native_value(self):
         """Return the battery power."""
-        return 0  # À remplacer par la vraie valeur 
+        return self.coordinator.data["battery_power"]
+
+class StorCubeTemperature(StorCubeBaseSensor):
+    """Sensor for battery temperature."""
+
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "Temperature",
+            ICON_TEMPERATURE,
+            device_class=SensorDeviceClass.TEMPERATURE,
+            state_class=SensorStateClass.MEASUREMENT,
+            unit=UnitOfTemperature.CELSIUS,
+        )
+
+    @property
+    def native_value(self):
+        """Return the battery temperature."""
+        return self.coordinator.data["temperature"]
+
+class StorCubeStatus(StorCubeBaseSensor):
+    """Sensor for battery status."""
+
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "Status",
+            ICON_BATTERY,
+        )
+
+    @property
+    def native_value(self):
+        """Return the battery status."""
+        return self.coordinator.data["status"] 
