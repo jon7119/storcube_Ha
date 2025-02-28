@@ -3,23 +3,21 @@
         "step": {
             "user": {
                 "title": "Storcube Battery Configuration",
-                "description": "Set up your Storcube battery with Home Assistant",
+                "description": "Configure your Storcube battery",
                 "data": {
                     "host": "MQTT Broker Address",
                     "port": "MQTT Port",
-                    "device_id": "Battery ID (Device ID)",
-                    "app_code": "Application Code (default: Storcube)",
-                    "login_name": "Baterway Username",
-                    "auth_password": "Baterway Password",
-                    "username": "MQTT Username",
-                    "password": "MQTT Password"
+                    "device_id": "Device ID",
+                    "app_code": "Application Code",
+                    "login_name": "Username",
+                    "auth_password": "Password"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Failed to connect to Baterway server",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
+            "cannot_connect": "Connection Failed",
+            "invalid_auth": "Invalid Authentication",
+            "unknown": "Unexpected Error"
         },
         "abort": {
             "already_configured": "This battery is already configured"
@@ -30,11 +28,59 @@
             "battery_level": {
                 "name": "Battery Level"
             },
-            "power": {
-                "name": "Power"
+            "battery_power": {
+                "name": "Battery Power"
             },
-            "threshold": {
-                "name": "Battery Threshold"
+            "battery_voltage": {
+                "name": "Battery Voltage"
+            },
+            "battery_current": {
+                "name": "Battery Current"
+            },
+            "battery_temperature": {
+                "name": "Battery Temperature"
+            },
+            "battery_energy": {
+                "name": "Battery Energy"
+            },
+            "battery_capacity": {
+                "name": "Battery Capacity"
+            },
+            "battery_health": {
+                "name": "Battery Health"
+            },
+            "battery_cycles": {
+                "name": "Battery Cycles"
+            },
+            "solar_power": {
+                "name": "Solar Power"
+            },
+            "solar_voltage": {
+                "name": "Solar Voltage"
+            },
+            "solar_current": {
+                "name": "Solar Current"
+            },
+            "solar_energy": {
+                "name": "Solar Energy Produced"
+            },
+            "output_power": {
+                "name": "Output Power"
+            },
+            "output_voltage": {
+                "name": "Output Voltage"
+            },
+            "output_current": {
+                "name": "Output Current"
+            },
+            "output_energy": {
+                "name": "Energy Consumed"
+            },
+            "status": {
+                "name": "System Status"
+            },
+            "firmware": {
+                "name": "Firmware Version"
             }
         }
     }
