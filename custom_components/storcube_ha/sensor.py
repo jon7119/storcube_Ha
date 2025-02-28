@@ -548,15 +548,31 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         raise Exception("Failed to get token")
                     token = token_data["data"]["token"]
 
-            # Connect to websocket
+            # Connect to websocket with proper headers
             uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
-            async with websockets.connect(uri) as websocket:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Upgrade": "websocket",
+                "Connection": "Upgrade",
+            }
+            async with websockets.connect(
+                uri,
+                extra_headers=headers,
+                subprotocols=["mqtt"],
+            ) as websocket:
                 _LOGGER.info("Connected to websocket")
+
+                # Send initial subscription message
+                await websocket.send(json.dumps({
+                    "type": "subscribe",
+                    "deviceId": config[CONF_DEVICE_ID]
+                }))
 
                 while True:
                     try:
                         message = await websocket.recv()
                         data = json.loads(message)
+                        _LOGGER.debug("Received data: %s", data)
 
                         # Publish to MQTT
                         await mqtt.async_publish(
@@ -568,6 +584,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         )
 
                     except websockets.ConnectionClosed:
+                        _LOGGER.warning("WebSocket connection closed, reconnecting...")
                         break
 
         except Exception as e:
