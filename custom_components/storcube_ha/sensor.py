@@ -5,7 +5,6 @@ import logging
 import json
 import asyncio
 import aiohttp
-import websockets
 from datetime import datetime
 from typing import Any
 
@@ -533,8 +532,8 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
     """Handle websocket connection and forward data to MQTT."""
     while True:
         try:
-            # Get authentication token
             async with aiohttp.ClientSession() as session:
+                # Get authentication token
                 async with session.post(
                     TOKEN_URL,
                     json={
@@ -548,45 +547,48 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         raise Exception("Failed to get token")
                     token = token_data["data"]["token"]
 
-            # Connect to websocket with proper headers
-            uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Upgrade": "websocket",
-                "Connection": "Upgrade",
-            }
-            async with websockets.connect(
-                uri,
-                extra_headers=headers,
-                subprotocols=["mqtt"],
-            ) as websocket:
-                _LOGGER.info("Connected to websocket")
+                # Connect to websocket
+                uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                }
 
-                # Send initial subscription message
-                await websocket.send(json.dumps({
-                    "type": "subscribe",
-                    "deviceId": config[CONF_DEVICE_ID]
-                }))
+                _LOGGER.debug("Connecting to WebSocket with URI: %s", uri)
+                async with session.ws_connect(uri, headers=headers) as ws:
+                    _LOGGER.info("Connected to websocket")
 
-                while True:
-                    try:
-                        message = await websocket.recv()
-                        data = json.loads(message)
-                        _LOGGER.debug("Received data: %s", data)
+                    # Send initial subscription message
+                    await ws.send_json({
+                        "type": "subscribe",
+                        "deviceId": config[CONF_DEVICE_ID]
+                    })
 
-                        # Publish to MQTT
-                        await mqtt.async_publish(
-                            hass,
-                            TOPIC_BATTERY,
-                            json.dumps(data),
-                            config[CONF_PORT],
-                            False,
-                        )
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            try:
+                                data = json.loads(msg.data)
+                                _LOGGER.debug("Received data: %s", data)
 
-                    except websockets.ConnectionClosed:
-                        _LOGGER.warning("WebSocket connection closed, reconnecting...")
-                        break
+                                # Publish to MQTT
+                                await mqtt.async_publish(
+                                    hass,
+                                    TOPIC_BATTERY,
+                                    json.dumps(data),
+                                    config[CONF_PORT],
+                                    False,
+                                )
+                            except json.JSONDecodeError as e:
+                                _LOGGER.error("Error decoding message: %s", e)
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
+                            _LOGGER.error("WebSocket connection closed with exception %s", ws.exception())
+                            break
+                        elif msg.type == aiohttp.WSMsgType.CLOSED:
+                            _LOGGER.warning("WebSocket connection closed")
+                            break
 
-        except Exception as e:
+        except aiohttp.ClientError as e:
             _LOGGER.error("Error in websocket connection: %s", e)
+            await asyncio.sleep(30)  # Wait before retrying
+        except Exception as e:
+            _LOGGER.error("Unexpected error in websocket connection: %s", e)
             await asyncio.sleep(30)  # Wait before retrying 
