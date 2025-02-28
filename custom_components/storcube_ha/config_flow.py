@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -14,7 +15,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     DOMAIN,
@@ -26,13 +27,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
-
-STEP_USER_DATA_SCHEMA = vol.Schema(
+DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
@@ -44,39 +39,30 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-    # TODO: Validate the data can be used to set up a connection.
-    return {"title": f"StorCube Battery Monitor ({data[CONF_HOST]})"}
-
-class StorCubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Gérer le flux de configuration."""
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Storcube Battery Monitor."""
 
     VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Gérer le flux de configuration initié par l'utilisateur."""
+        """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
             try:
-                info = await validate_input(self.hass, user_input)
+                # Vous pouvez ajouter ici une validation si nécessaire
                 return self.async_create_entry(
-                    title=info["title"],
+                    title=f"StorCube Battery Monitor ({user_input[CONF_HOST]})",
                     data=user_input,
                 )
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except Exception as error:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception: %s", error)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=DATA_SCHEMA,
             errors=errors,
         ) 
