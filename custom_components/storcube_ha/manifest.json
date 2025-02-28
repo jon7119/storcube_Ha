@@ -2,16 +2,10 @@
     "domain": "storcube_ha",
     "name": "StorCube Battery Monitor",
     "documentation": "https://github.com/jon7119/storcube_Ha",
-    "issue_tracker": "https://github.com/jon7119/storcube_Ha/issues",
     "dependencies": ["mqtt"],
     "codeowners": ["@jon7119"],
-    "requirements": [
-        "paho-mqtt==1.6.1",
-        "websockets==11.0.3",
-        "requests==2.31.0"
-    ],
+    "requirements": ["paho-mqtt==1.6.1"],
     "version": "1.0.0",
     "config_flow": true,
-    "iot_class": "local_push",
-    "homeassistant": "2024.1.0"
+    "iot_class": "local_push"
 } 

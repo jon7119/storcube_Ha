@@ -1,4 +1,4 @@
-"""Constants pour l'intégration Storcube Battery Monitor."""
+"""Constants for the StorCube Battery Monitor integration."""
 
 DOMAIN = "storcube_ha"
 
@@ -49,4 +49,10 @@ ERRORS = {
     "invalid_auth": "Identifiants MQTT invalides",
     "invalid_device": "Code de l'application ou identifiants invalides",
     "unknown": "Erreur inattendue"
-} 
+}
+
+# MQTT Topics
+MQTT_TOPIC_PREFIX = "battery/"
+MQTT_TOPIC_STATUS = MQTT_TOPIC_PREFIX + "status"
+MQTT_TOPIC_POWER = MQTT_TOPIC_PREFIX + "power"
+MQTT_TOPIC_SOLAR = MQTT_TOPIC_PREFIX + "solar" 

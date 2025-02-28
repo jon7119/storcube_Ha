@@ -1,68 +1,32 @@
-"""L'intégration Storcube Battery Monitor."""
-from __future__ import annotations
-
+"""The StorCube Battery Monitor integration."""
 import logging
-from datetime import timedelta
-
-import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PORT,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    Platform,
-)
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
-from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import (
-    DOMAIN,
-    DEFAULT_UPDATE_INTERVAL,
-)
-from .coordinator import StorcubeDataUpdateCoordinator
-from .services import async_setup_services, async_unload_services
-
-PLATFORMS: list[Platform] = [
-    Platform.SENSOR,
-    Platform.BINARY_SENSOR,
-]
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)  # Activer le logging détaillé
+
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Configurer le composant."""
+    """Set up the StorCube Battery Monitor component."""
     hass.data.setdefault(DOMAIN, {})
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Configurer l'intégration à partir d'une entrée de configuration."""
-    _LOGGER.debug("Configuration de StorCube Battery Monitor")
-
-    coordinator = StorcubeDataUpdateCoordinator(
-        hass,
-        config_entry=entry,
-        update_interval=timedelta(seconds=DEFAULT_UPDATE_INTERVAL),
-    )
-
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception as err:
-        _LOGGER.error("Erreur lors du rafraîchissement initial: %s", err)
-        raise ConfigEntryNotReady from err
-
-    hass.data[DOMAIN][entry.entry_id] = coordinator
-
+    """Set up StorCube Battery Monitor from a config entry."""
+    hass.data[DOMAIN][entry.entry_id] = entry.data
+    
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Décharger une entrée de configuration."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok 
