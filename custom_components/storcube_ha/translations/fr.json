@@ -2,15 +2,15 @@
     "config": {
         "step": {
             "user": {
-                "title": "Configuration de StorCube Battery Monitor",
-                "description": "Configurez votre connexion MQTT et les identifiants de l'appareil",
+                "title": "Configuration StorCube Battery Monitor",
+                "description": "Configurez votre connexion MQTT et les identifiants StorCube",
                 "data": {
-                    "host": "Adresse IP du broker MQTT",
-                    "port": "Port du broker MQTT",
+                    "host": "Adresse du broker MQTT",
+                    "port": "Port MQTT",
                     "username": "Nom d'utilisateur MQTT",
                     "password": "Mot de passe MQTT",
                     "app_code": "Code de l'application",
-                    "login_name": "Nom de connexion de l'appareil",
+                    "login_name": "Nom de connexion",
                     "device_password": "Mot de passe de l'appareil"
                 },
                 "data_description": {
@@ -27,7 +27,6 @@
         "error": {
             "cannot_connect": "Impossible de se connecter au broker MQTT",
             "invalid_auth": "Authentification invalide",
-            "invalid_device": "Code de l'application ou identifiants invalides",
             "unknown": "Erreur inattendue"
         },
         "abort": {
