@@ -25,7 +25,7 @@ from homeassistant.const import (
     UnitOfEnergy,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
-    TEMP_CELSIUS,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -209,7 +209,7 @@ class StorcubeBatteryTemperatureSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Température Batterie Storcube"
-        self._attr_native_unit_of_measurement = TEMP_CELSIUS
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_temperature"
