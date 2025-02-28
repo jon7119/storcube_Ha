@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import json
 import asyncio
+import aiohttp
 import websockets
 from datetime import datetime
 from typing import Any
