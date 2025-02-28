@@ -1,0 +1,7 @@
+Il vous faut au moins ces versions là sinon il se peut que ça ne fonctionne pas
+websockets~=12.0
+requests~=2.32.3
+paho-mqtt~=2.1.0
+
+pour cela 
+"pip3 install --upgrade websockets==12.0 requests==2.32.3 paho-mqtt==2.1.0"

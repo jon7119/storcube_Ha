@@ -1,172 +1,177 @@
-"""Support for StorCube Battery Monitor sensors."""
+"""Support for Battery MQTT sensors."""
+from __future__ import annotations
+
+import logging
+import json
+import asyncio
+import websockets
+from datetime import datetime
+from typing import Any
+
+from homeassistant.components import mqtt
 from homeassistant.components.sensor import (
-    SensorEntity,
     SensorDeviceClass,
+    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    CONF_HOST,
+    CONF_PORT,
+    CONF_USERNAME,
+    CONF_PASSWORD,
     PERCENTAGE,
     UnitOfPower,
-    UnitOfEnergy,
-    UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
     DOMAIN,
-    ICON_BATTERY,
-    ICON_SOLAR,
-    ICON_INVERTER,
-    ICON_TEMPERATURE,
+    CONF_DEVICE_ID,
+    CONF_APP_CODE,
+    CONF_LOGIN_NAME,
+    CONF_AUTH_PASSWORD,
+    WS_URI,
+    TOKEN_URL,
+    TOPIC_BATTERY,
+    TOPIC_OUTPUT,
+    TOPIC_FIRMWARE,
+    TOPIC_POWER,
+    TOPIC_OUTPUT_POWER,
+    TOPIC_THRESHOLD,
 )
-from .coordinator import StorCubeDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the StorCube Battery Monitor sensors."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    """Set up sensors from a config entry."""
+    config = config_entry.data
 
-    async_add_entities([
-        StorCubeBatteryLevel(coordinator, config_entry),
-        StorCubeSolarPower(coordinator, config_entry),
-        StorCubeBatteryPower(coordinator, config_entry),
-        StorCubeTemperature(coordinator, config_entry),
-        StorCubeStatus(coordinator, config_entry),
-    ])
+    # Create battery sensors
+    sensors = [
+        BatteryLevelSensor(config),
+        BatteryPowerSensor(config),
+        BatteryThresholdSensor(config),
+    ]
 
-class StorCubeBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base class for StorCube sensors."""
+    async_add_entities(sensors)
 
-    def __init__(
-        self,
-        coordinator: StorCubeDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        name: str,
-        icon: str,
-        device_class: str | None = None,
-        state_class: str | None = None,
-        unit: str | None = None,
-    ) -> None:
+    # Start websocket connection
+    asyncio.create_task(websocket_to_mqtt(hass, config))
+
+class BatteryLevelSensor(SensorEntity):
+    """Representation of a Battery Level Sensor."""
+
+    def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._config = config_entry
-        self._attr_name = f"StorCube {name}"
-        self._attr_unique_id = f"{config_entry.entry_id}_{name.lower().replace(' ', '_')}"
-        self._attr_icon = icon
-        self._attr_device_class = device_class
-        self._attr_state_class = state_class
-        self._attr_native_unit_of_measurement = unit
+        self._attr_name = "Battery Level"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_level"
+        self._config = config
+        self._attr_native_value = None
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._config.entry_id)},
-            name="StorCube Battery",
-            manufacturer="StorCube",
-            model="Battery Monitor",
-        )
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("battery_level")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating battery level: %s", e)
 
-class StorCubeBatteryLevel(StorCubeBaseSensor):
-    """Sensor for battery level."""
+class BatteryPowerSensor(SensorEntity):
+    """Representation of a Battery Power Sensor."""
 
-    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+    def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "Battery Level",
-            ICON_BATTERY,
-            device_class=SensorDeviceClass.BATTERY,
-            state_class=SensorStateClass.MEASUREMENT,
-            unit=PERCENTAGE,
-        )
+        self._attr_name = "Battery Power"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_power"
+        self._config = config
+        self._attr_native_value = None
 
-    @property
-    def native_value(self):
-        """Return the battery level."""
-        return self.coordinator.data["battery_level"]
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("power")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating power: %s", e)
 
-class StorCubeSolarPower(StorCubeBaseSensor):
-    """Sensor for solar power input."""
+class BatteryThresholdSensor(SensorEntity):
+    """Representation of a Battery Threshold Sensor."""
 
-    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+    def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "Solar Power",
-            ICON_SOLAR,
-            device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.WATT,
-        )
+        self._attr_name = "Battery Threshold"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_threshold"
+        self._config = config
+        self._attr_native_value = None
 
-    @property
-    def native_value(self):
-        """Return the solar power."""
-        return self.coordinator.data["solar_power"]
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("threshold")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating threshold: %s", e)
 
-class StorCubeBatteryPower(StorCubeBaseSensor):
-    """Sensor for battery power output."""
+async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
+    """Handle websocket connection and forward data to MQTT."""
+    while True:
+        try:
+            # Get authentication token
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": config[CONF_APP_CODE],
+                        "loginName": config[CONF_LOGIN_NAME],
+                        "password": config[CONF_AUTH_PASSWORD],
+                    },
+                ) as response:
+                    token_data = await response.json()
+                    if token_data.get("code") != 200:
+                        raise Exception("Failed to get token")
+                    token = token_data["data"]["token"]
 
-    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "Battery Power",
-            ICON_INVERTER,
-            device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfPower.WATT,
-        )
+            # Connect to websocket
+            uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
+            async with websockets.connect(uri) as websocket:
+                _LOGGER.info("Connected to websocket")
 
-    @property
-    def native_value(self):
-        """Return the battery power."""
-        return self.coordinator.data["battery_power"]
+                while True:
+                    try:
+                        message = await websocket.recv()
+                        data = json.loads(message)
 
-class StorCubeTemperature(StorCubeBaseSensor):
-    """Sensor for battery temperature."""
+                        # Publish to MQTT
+                        await mqtt.async_publish(
+                            hass,
+                            TOPIC_BATTERY,
+                            json.dumps(data),
+                            config[CONF_PORT],
+                            False,
+                        )
 
-    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "Temperature",
-            ICON_TEMPERATURE,
-            device_class=SensorDeviceClass.TEMPERATURE,
-            state_class=SensorStateClass.MEASUREMENT,
-            unit=UnitOfTemperature.CELSIUS,
-        )
+                    except websockets.ConnectionClosed:
+                        break
 
-    @property
-    def native_value(self):
-        """Return the battery temperature."""
-        return self.coordinator.data["temperature"]
-
-class StorCubeStatus(StorCubeBaseSensor):
-    """Sensor for battery status."""
-
-    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "Status",
-            ICON_BATTERY,
-        )
-
-    @property
-    def native_value(self):
-        """Return the battery status."""
-        return self.coordinator.data["status"] 
+        except Exception as e:
+            _LOGGER.error("Error in websocket connection: %s", e)
+            await asyncio.sleep(30)  # Wait before retrying 

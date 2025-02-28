@@ -1,0 +1,105 @@
+Guide d'Installation du Script Battery to MQTT avec Docker
+
+Pré-requis:
+1. Un Raspberry Pi 3 (ou plus récent) avec Raspbian installé.
+2. Une connexion Internet.
+3. Docker installé sur le Raspberry Pi.
+Etape 1: Mettre à jour le système
+Avant d'installer Docker, mettez à jour votre Raspberry Pi :
+```
+sudo apt update && sudo apt upgrade -y
+```
+
+Etape 2:installer python3
+
+sudo apt install python3 -y
+
+Etape 3: installer pip websockets reuests paho-mqtt
+
+pip3 install --upgrade websockets==12.0 requests==2.32.3 paho-mqtt==2.1.0
+
+Etape 4: Installer Docker
+Si Docker n'est pas encore installé sur votre Raspberry Pi, utilisez
+cette commande :
+```
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker pi
+
+```
+Ensuite, redémarrez votre Raspberry Pi :
+```
+sudo reboot
+
+```
+Etape 5: Vérifier l'installation de Docker
+Après le redémarrage, assurez-vous que Docker fonctionne :
+```
+docker --version
+
+```
+Etape 6: Télécharger le script depuis GitHub
+Placez-vous dans le répertoire où vous souhaitez installer le script et
+téléchargez-le :
+```
+cd /home/pi
+git clone https://github.com/jon7119/batteryMqtt.git battery-to-mqtt
+cd battery-to-mqtt
+
+```
+Etape 5: modifier les infos de connection
+
+echo "export MQTT_BROKER='192.168.1.***'" >> ~/.bashrc
+echo "export MQTT_PORT='1883'" >> ~/.bashrc
+echo "export MQTT_TOPIC='battery/reportEquip'" >> ~/.bashrc
+echo "export MQTT_USERNAME='***'" >> ~/.bashrc
+echo "export MQTT_PASSWORD='***'" >> ~/.bashrc
+echo "export DEVICE_ID='***'" >> ~/.bashrc
+echo "export APP_CODE='Storcube'" >> ~/.bashrc
+echo "export LOGIN_NAME='***'" >> ~/.bashrc
+echo "export PASSWORD='***'" >> ~/.bashrc
+source ~/.bashrc
+
+
+Etape 7: lancer le script voir si cela marche
+
+```
+
+python3 batteryMqtt.py
+
+```
+
+si cela marche faite
+
+```
+ctrl c
+
+```
+
+Etape 8: lancer le script en arrière plan
+
+````
+nohup python batteryMqtt.py &
+
+````
+si besoin d'arreter le script
+
+````
+pkill -f batteryMqtt.py
+
+````
+Etape 9 : si besoin de mettre à jour le script 
+
+être dans le dossier du script 
+
+````
+
+git pull origin main
+
+````
+
+Le script **Battery to MQTT** est maintenant installé et fonctionnel
+
+Dépôt GitHub officiel :
+[https://github.com/jon7119/batteryMqtt](https://github.com/jon7119/b
+atteryMqtt)
