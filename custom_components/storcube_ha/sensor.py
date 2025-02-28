@@ -31,9 +31,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the StorCube Battery Monitor sensors."""
-    coordinator = StorCubeDataUpdateCoordinator(hass, entry_id=config_entry.entry_id)
-    await coordinator.async_setup()
-    await coordinator.async_config_entry_first_refresh()
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities([
         StorCubeBatteryLevel(coordinator, config_entry),

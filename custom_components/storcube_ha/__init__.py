@@ -20,7 +20,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up StorCube Battery Monitor from a config entry."""
-    coordinator = StorCubeDataUpdateCoordinator(hass, entry_id=entry.entry_id)
+    coordinator = StorCubeDataUpdateCoordinator(hass, entry)
     
     try:
         await coordinator.async_setup()
