@@ -546,14 +546,18 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                 "password": config[CONF_AUTH_PASSWORD]
             }
             
-            async with aiohttp.ClientSession() as session:
-                _LOGGER.debug("Tentative de connexion à %s", TOKEN_URL)
+            timeout = aiohttp.ClientTimeout(total=30, connect=20)
+            connector = aiohttp.TCPConnector(verify_ssl=False)
+            
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                _LOGGER.debug("Tentative de connexion à %s avec timeout=%s", TOKEN_URL, timeout)
                 try:
+                    # Force HTTP
+                    login_url = TOKEN_URL.replace("https://", "http://")
                     async with session.post(
-                        TOKEN_URL,
+                        login_url,
                         json=payload,
-                        headers=headers,
-                        verify_ssl=False
+                        headers=headers
                     ) as response:
                         _LOGGER.debug("Statut de la réponse: %d", response.status)
                         response_text = await response.text()
@@ -578,7 +582,8 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                     }
 
                     # Get output info
-                    async with session.get(OUTPUT_URL, headers=headers, verify_ssl=False) as response:
+                    output_url = OUTPUT_URL.replace("https://", "http://")
+                    async with session.get(output_url, headers=headers) as response:
                         if response.status == 200:
                             output_data = await response.json()
                             if output_data.get("data"):
@@ -591,8 +596,8 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                                 )
 
                     # Get firmware info
-                    url = f"{FIRMWARE_URL}?equipId={config[CONF_DEVICE_ID]}"
-                    async with session.get(url, headers=headers, verify_ssl=False) as response:
+                    firmware_url = f"{FIRMWARE_URL.replace('https://', 'http://')}?equipId={config[CONF_DEVICE_ID]}"
+                    async with session.get(firmware_url, headers=headers) as response:
                         if response.status == 200:
                             firmware_data = await response.json()
                             if firmware_data.get("data"):
@@ -617,7 +622,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                     async with session.ws_connect(
                         uri,
                         headers=ws_headers,
-                        verify_ssl=False
+                        heartbeat=30
                     ) as websocket:
                         _LOGGER.info("Connexion WebSocket établie")
 
@@ -651,7 +656,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                                                 _LOGGER.debug("Données batterie publiées sur MQTT: %s", clean_message)
 
                                                 # Update output and firmware info periodically
-                                                async with session.get(OUTPUT_URL, headers=headers, verify_ssl=False) as response:
+                                                async with session.get(output_url, headers=headers) as response:
                                                     if response.status == 200:
                                                         output_data = await response.json()
                                                         if output_data.get("data"):
@@ -663,8 +668,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                                                                 False,
                                                             )
 
-                                                url = f"{FIRMWARE_URL}?equipId={config[CONF_DEVICE_ID]}"
-                                                async with session.get(url, headers=headers, verify_ssl=False) as response:
+                                                async with session.get(firmware_url, headers=headers) as response:
                                                     if response.status == 200:
                                                         firmware_data = await response.json()
                                                         if firmware_data.get("data"):
