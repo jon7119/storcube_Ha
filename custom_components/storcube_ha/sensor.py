@@ -6,6 +6,7 @@ import json
 import asyncio
 import aiohttp
 import websockets
+import requests
 from datetime import datetime
 from typing import Any
 
@@ -545,13 +546,13 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
 
             _LOGGER.debug("Tentative de connexion à %s", TOKEN_URL)
             try:
-                response = await websockets.http.request(
+                response = requests.post(
                     TOKEN_URL,
-                    method="POST",
                     headers=headers,
-                    data=json.dumps(payload)
+                    json=payload,
+                    verify=False
                 )
-                response_text = response.body.decode()
+                response_text = response.text
                 _LOGGER.debug("Réponse brute: %s", response_text)
                 
                 token_data = json.loads(response_text)
@@ -571,7 +572,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                     "User-Agent": "okhttp/3.12.11"
                 }
 
-                async with websockets.connect(uri, extra_headers=headers) as websocket:
+                async with websockets.connect(uri, extra_headers=headers, ssl=False) as websocket:
                     _LOGGER.info("Connexion WebSocket établie")
 
                     request_data = {"reportEquip": [config[CONF_DEVICE_ID]]}
