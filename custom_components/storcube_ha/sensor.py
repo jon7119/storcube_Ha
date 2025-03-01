@@ -567,30 +567,20 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         # Connect to websocket
                         uri = f"{WS_URI}{token}"
                         _LOGGER.debug("Connexion WebSocket à %s", uri)
-                        
-                        # Création des en-têtes pour le websocket
-                        ws_headers = {
-                            "Authorization": token,
-                            "Content-Type": "application/json",
-                            "User-Agent": "okhttp/3.12.11"
-                        }
 
-                        # Ne pas utiliser ssl=False si l'URI commence par ws://
-                        if uri.startswith("wss://"):
-                            async with websockets.connect(
-                                uri,
-                                additional_headers=ws_headers,
-                                ssl=False
-                            ) as websocket:
-                                _LOGGER.info("Connexion WebSocket établie (SSL désactivé)")
-                                await handle_websocket_connection(websocket, config, hass)
-                        else:
-                            async with websockets.connect(
-                                uri,
-                                additional_headers=ws_headers
-                            ) as websocket:
-                                _LOGGER.info("Connexion WebSocket établie (non-SSL)")
-                                await handle_websocket_connection(websocket, config, hass)
+                        async with websockets.connect(uri) as websocket:
+                            _LOGGER.info("Connexion WebSocket établie")
+                            
+                            # Envoi des en-têtes dans le premier message
+                            headers_msg = {
+                                "type": "headers",
+                                "Authorization": token,
+                                "Content-Type": "application/json",
+                                "User-Agent": "okhttp/3.12.11"
+                            }
+                            await websocket.send(json.dumps(headers_msg))
+                            
+                            await handle_websocket_connection(websocket, config, hass)
 
             except Exception as e:
                 _LOGGER.error("Erreur inattendue: %s", str(e))
