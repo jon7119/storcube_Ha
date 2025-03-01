@@ -574,44 +574,15 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                             "User-Agent": "okhttp/3.12.11"
                         }
 
-                        async with websockets.connect(uri, extra_headers=headers, ssl=False) as websocket:
-                            _LOGGER.info("Connexion WebSocket établie")
-
-                            request_data = {"reportEquip": [config[CONF_DEVICE_ID]]}
-                            await websocket.send(json.dumps(request_data))
-                            _LOGGER.debug("Requête envoyée: %s", request_data)
-
-                            while True:
-                                try:
-                                    message = await asyncio.wait_for(websocket.recv(), timeout=60)
-                                    _LOGGER.debug("Message WebSocket reçu: %s", message)
-                                    
-                                    if message.strip():
-                                        json_data = json.loads(message)
-                                        
-                                        if isinstance(json_data, dict):
-                                            equip_data = next(iter(json_data.values()), {})
-                                            clean_message = json.dumps(equip_data)
-                                            
-                                            await mqtt.async_publish(
-                                                hass,
-                                                TOPIC_BATTERY,
-                                                clean_message,
-                                                config[CONF_PORT],
-                                                False,
-                                            )
-                                            _LOGGER.debug("Données batterie publiées sur MQTT: %s", clean_message)
-                                
-                                except asyncio.TimeoutError:
-                                    _LOGGER.warning("Timeout WebSocket, envoi heartbeat...")
-                                    await websocket.send(json.dumps(request_data))
-                                    continue
-                                except websockets.ConnectionClosed:
-                                    _LOGGER.warning("Connexion WebSocket fermée")
-                                    break
-                                except Exception as e:
-                                    _LOGGER.error("Erreur WebSocket: %s", str(e))
-                                    break
+                        # Ne pas utiliser ssl=False si l'URI commence par ws://
+                        if uri.startswith("wss://"):
+                            async with websockets.connect(uri, extra_headers=headers, ssl=False) as websocket:
+                                _LOGGER.info("Connexion WebSocket établie (SSL désactivé)")
+                                await handle_websocket_connection(websocket, config, hass)
+                        else:
+                            async with websockets.connect(uri, extra_headers=headers) as websocket:
+                                _LOGGER.info("Connexion WebSocket établie (non-SSL)")
+                                await handle_websocket_connection(websocket, config, hass)
 
             except Exception as e:
                 _LOGGER.error("Erreur inattendue: %s", str(e))
@@ -620,4 +591,42 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
 
         except Exception as e:
             _LOGGER.error("Erreur de connexion: %s", str(e))
-            await asyncio.sleep(5) 
+            await asyncio.sleep(5)
+
+async def handle_websocket_connection(websocket, config, hass):
+    """Gère la connexion WebSocket une fois établie."""
+    request_data = {"reportEquip": [config[CONF_DEVICE_ID]]}
+    await websocket.send(json.dumps(request_data))
+    _LOGGER.debug("Requête envoyée: %s", request_data)
+
+    while True:
+        try:
+            message = await asyncio.wait_for(websocket.recv(), timeout=60)
+            _LOGGER.debug("Message WebSocket reçu: %s", message)
+            
+            if message.strip():
+                json_data = json.loads(message)
+                
+                if isinstance(json_data, dict):
+                    equip_data = next(iter(json_data.values()), {})
+                    clean_message = json.dumps(equip_data)
+                    
+                    await mqtt.async_publish(
+                        hass,
+                        TOPIC_BATTERY,
+                        clean_message,
+                        config[CONF_PORT],
+                        False,
+                    )
+                    _LOGGER.debug("Données batterie publiées sur MQTT: %s", clean_message)
+        
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timeout WebSocket, envoi heartbeat...")
+            await websocket.send(json.dumps(request_data))
+            continue
+        except websockets.ConnectionClosed:
+            _LOGGER.warning("Connexion WebSocket fermée")
+            break
+        except Exception as e:
+            _LOGGER.error("Erreur WebSocket: %s", str(e))
+            break 
