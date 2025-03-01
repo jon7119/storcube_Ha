@@ -569,16 +569,23 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         _LOGGER.debug("Connexion WebSocket à %s", uri)
 
                         # Configuration de la connexion WebSocket
-                        websocket_options = {
-                            "origin": "http://baterway.com",
-                            "user_agent_header": "okhttp/3.12.11",
-                            "extra_headers": {
-                                "Authorization": token,
-                                "Content-Type": "application/json"
-                            }
+                        ws_headers = {
+                            "Authorization": token,
+                            "Content-Type": "application/json",
+                            "User-Agent": "okhttp/3.12.11",
+                            "Host": "baterway.com",
+                            "Connection": "Upgrade",
+                            "Upgrade": "websocket",
+                            "Sec-WebSocket-Version": "13"
                         }
 
-                        async with websockets.client.connect(uri, **websocket_options) as websocket:
+                        async with websockets.legacy.client.connect(
+                            uri,
+                            extra_headers=ws_headers,
+                            ping_interval=None,
+                            ping_timeout=None,
+                            close_timeout=None
+                        ) as websocket:
                             _LOGGER.info("Connexion WebSocket établie")
                             await handle_websocket_connection(websocket, config, hass)
 
