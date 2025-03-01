@@ -6,7 +6,7 @@ import json
 import asyncio
 import requests
 import paho.mqtt.client as mqtt
-import websockets
+import websockets.client as websockets
 from datetime import datetime
 from typing import Any
 
