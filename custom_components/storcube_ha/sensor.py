@@ -47,6 +47,8 @@ from .const import (
     TOPIC_POWER,
     TOPIC_OUTPUT_POWER,
     TOPIC_THRESHOLD,
+    OUTPUT_URL,
+    FIRMWARE_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -551,7 +553,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         TOKEN_URL,
                         json=payload,
                         headers=headers,
-                        ssl=False
+                        verify_ssl=False
                     ) as response:
                         _LOGGER.debug("Statut de la réponse: %d", response.status)
                         response_text = await response.text()
@@ -568,6 +570,40 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         token = token_data["data"]["token"]
                         _LOGGER.info("Token obtenu avec succès")
 
+                    # Get initial data
+                    headers = {
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": config[CONF_APP_CODE]
+                    }
+
+                    # Get output info
+                    async with session.get(OUTPUT_URL, headers=headers, verify_ssl=False) as response:
+                        if response.status == 200:
+                            output_data = await response.json()
+                            if output_data.get("data"):
+                                await mqtt.async_publish(
+                                    hass,
+                                    TOPIC_OUTPUT,
+                                    json.dumps(output_data["data"]),
+                                    config[CONF_PORT],
+                                    False,
+                                )
+
+                    # Get firmware info
+                    url = f"{FIRMWARE_URL}?equipId={config[CONF_DEVICE_ID]}"
+                    async with session.get(url, headers=headers, verify_ssl=False) as response:
+                        if response.status == 200:
+                            firmware_data = await response.json()
+                            if firmware_data.get("data"):
+                                await mqtt.async_publish(
+                                    hass,
+                                    TOPIC_FIRMWARE,
+                                    json.dumps(firmware_data["data"]),
+                                    config[CONF_PORT],
+                                    False,
+                                )
+
                     # Connect to websocket
                     uri = f"{WS_URI}{token}"
                     _LOGGER.debug("Connexion WebSocket à %s", uri)
@@ -581,7 +617,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                     async with session.ws_connect(
                         uri,
                         headers=ws_headers,
-                        ssl=False
+                        verify_ssl=False
                     ) as websocket:
                         _LOGGER.info("Connexion WebSocket établie")
 
@@ -613,6 +649,32 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                                                     False,
                                                 )
                                                 _LOGGER.debug("Données batterie publiées sur MQTT: %s", clean_message)
+
+                                                # Update output and firmware info periodically
+                                                async with session.get(OUTPUT_URL, headers=headers, verify_ssl=False) as response:
+                                                    if response.status == 200:
+                                                        output_data = await response.json()
+                                                        if output_data.get("data"):
+                                                            await mqtt.async_publish(
+                                                                hass,
+                                                                TOPIC_OUTPUT,
+                                                                json.dumps(output_data["data"]),
+                                                                config[CONF_PORT],
+                                                                False,
+                                                            )
+
+                                                url = f"{FIRMWARE_URL}?equipId={config[CONF_DEVICE_ID]}"
+                                                async with session.get(url, headers=headers, verify_ssl=False) as response:
+                                                    if response.status == 200:
+                                                        firmware_data = await response.json()
+                                                        if firmware_data.get("data"):
+                                                            await mqtt.async_publish(
+                                                                hass,
+                                                                TOPIC_FIRMWARE,
+                                                                json.dumps(firmware_data["data"]),
+                                                                config[CONF_PORT],
+                                                                False,
+                                                            )
                                     
                                     except json.JSONDecodeError as e:
                                         _LOGGER.error("Message JSON invalide reçu: %s", str(e))

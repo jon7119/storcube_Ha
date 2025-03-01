@@ -13,13 +13,13 @@ CONF_AUTH_PASSWORD = "auth_password"
 DEFAULT_PORT = 1883
 DEFAULT_APP_CODE = "Storcube"
 
-# API endpoints
-WS_URI = "wss://baterway.com:9501/equip/info/"
-TOKEN_URL = "https://baterway.com/api/user/app/login"
-FIRMWARE_URL = "https://baterway.com/api/equip/version/need/upgrade"
-OUTPUT_URL = "https://baterway.com/api/scene/user/list/V2"
-SET_POWER_URL = "https://baterway.com/api/slb/equip/set/power"
-SET_THRESHOLD_URL = "https://baterway.com/api/scene/threshold/set"
+# URLs
+WS_URI = "ws://baterway.com:9501/equip/info/"
+TOKEN_URL = "http://baterway.com/api/user/app/login"
+FIRMWARE_URL = "http://baterway.com/api/equip/version/need/upgrade"
+OUTPUT_URL = "http://baterway.com/api/scene/user/list/V2"
+SET_POWER_URL = "http://baterway.com/api/slb/equip/set/power"
+SET_THRESHOLD_URL = "http://baterway.com/api/scene/threshold/set"
 
 # MQTT Topics
 TOPIC_BATTERY = "battery/reportEquip"
