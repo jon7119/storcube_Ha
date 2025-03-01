@@ -534,22 +534,24 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
     while True:
         try:
             # Get authentication token
-            timeout = aiohttp.ClientTimeout(total=60, connect=20)
-            conn = aiohttp.TCPConnector(ssl=False)  # Désactive la vérification SSL temporairement
-            async with aiohttp.ClientSession(timeout=timeout, connector=conn) as session:
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "okhttp/3.12.11"
+            }
+            payload = {
+                "appCode": config[CONF_APP_CODE],
+                "loginName": config[CONF_LOGIN_NAME],
+                "password": config[CONF_AUTH_PASSWORD]
+            }
+            
+            async with aiohttp.ClientSession() as session:
                 _LOGGER.debug("Tentative de connexion à %s", TOKEN_URL)
-                _LOGGER.debug("Paramètres: appCode=%s, loginName=%s", 
-                            config[CONF_APP_CODE], 
-                            config[CONF_LOGIN_NAME])
                 try:
                     async with session.post(
                         TOKEN_URL,
-                        json={
-                            "appCode": config[CONF_APP_CODE],
-                            "loginName": config[CONF_LOGIN_NAME],
-                            "password": config[CONF_AUTH_PASSWORD],
-                        },
-                        allow_redirects=True,
+                        json=payload,
+                        headers=headers,
+                        ssl=False
                     ) as response:
                         _LOGGER.debug("Statut de la réponse: %d", response.status)
                         response_text = await response.text()
@@ -566,83 +568,81 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         token = token_data["data"]["token"]
                         _LOGGER.info("Token obtenu avec succès")
 
-                except asyncio.TimeoutError as te:
-                    _LOGGER.error("Timeout lors de la connexion à l'API Baterway: %s", str(te))
-                    await asyncio.sleep(60)
-                    continue
-                except aiohttp.ClientError as ce:
-                    _LOGGER.error("Erreur de connexion à l'API Baterway: %s", str(ce))
-                    await asyncio.sleep(60)
-                    continue
-                except json.JSONDecodeError as je:
-                    _LOGGER.error("Erreur de décodage JSON: %s", str(je))
-                    await asyncio.sleep(60)
-                    continue
+                    # Connect to websocket
+                    uri = f"{WS_URI}{token}"
+                    _LOGGER.debug("Connexion WebSocket à %s", uri)
+                    
+                    ws_headers = {
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "User-Agent": "okhttp/3.12.11"
+                    }
 
-            # Connect to websocket with proper headers and SSL
-            uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
-            _LOGGER.debug("Connexion WebSocket à %s", uri)
-            
-            try:
-                async with aiohttp.ClientSession(timeout=timeout, connector=conn) as session:
                     async with session.ws_connect(
                         uri,
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                            "User-Agent": "HomeAssistant/StorcubeMonitor",
-                        },
-                        heartbeat=30,
-                        receive_timeout=30,
+                        headers=ws_headers,
+                        ssl=False
                     ) as websocket:
                         _LOGGER.info("Connexion WebSocket établie")
 
-                        auth_message = {
-                            "type": "auth",
-                            "token": token,
-                            "deviceId": config[CONF_DEVICE_ID]
-                        }
-                        await websocket.send_json(auth_message)
-                        _LOGGER.debug("Message d'authentification envoyé")
+                        request_data = {"reportEquip": [config[CONF_DEVICE_ID]]}
+                        await websocket.send_json(request_data)
+                        _LOGGER.debug("Requête envoyée: %s", request_data)
 
-                        async for msg in websocket:
-                            if msg.type == aiohttp.WSMsgType.TEXT:
-                                try:
-                                    data = json.loads(msg.data)
-                                    _LOGGER.debug("Données reçues: %s", data)
-
-                                    if data.get("type") == "auth_ok":
-                                        _LOGGER.info("Authentification WebSocket réussie")
+                        while True:
+                            try:
+                                msg = await websocket.receive(timeout=60)
+                                
+                                if msg.type == aiohttp.WSMsgType.TEXT:
+                                    try:
+                                        message = msg.data
+                                        _LOGGER.debug("Message WebSocket reçu: %s", message)
+                                        
+                                        if message.strip():
+                                            json_data = json.loads(message)
+                                            
+                                            if isinstance(json_data, dict):
+                                                equip_data = next(iter(json_data.values()), {})
+                                                clean_message = json.dumps(equip_data)
+                                                
+                                                await mqtt.async_publish(
+                                                    hass,
+                                                    TOPIC_BATTERY,
+                                                    clean_message,
+                                                    config[CONF_PORT],
+                                                    False,
+                                                )
+                                                _LOGGER.debug("Données batterie publiées sur MQTT: %s", clean_message)
+                                    
+                                    except json.JSONDecodeError as e:
+                                        _LOGGER.error("Message JSON invalide reçu: %s", str(e))
                                         continue
+                                        
+                                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                                    _LOGGER.warning("Connexion WebSocket fermée")
+                                    break
+                                elif msg.type == aiohttp.WSMsgType.ERROR:
+                                    _LOGGER.error("Erreur WebSocket: %s", str(msg.data))
+                                    break
+                                    
+                            except asyncio.TimeoutError:
+                                _LOGGER.warning("Timeout WebSocket, envoi heartbeat...")
+                                await websocket.send_json(request_data)
+                                continue
 
-                                    await mqtt.async_publish(
-                                        hass,
-                                        TOPIC_BATTERY,
-                                        json.dumps(data),
-                                        config[CONF_PORT],
-                                        False,
-                                    )
-
-                                except json.JSONDecodeError as e:
-                                    _LOGGER.error("Erreur de décodage du message: %s", str(e))
-                                    continue
-                                except Exception as e:
-                                    _LOGGER.error("Erreur de traitement du message: %s", str(e))
-                                    continue
-                            elif msg.type == aiohttp.WSMsgType.CLOSED:
-                                _LOGGER.warning("Connexion WebSocket fermée")
-                                break
-                            elif msg.type == aiohttp.WSMsgType.ERROR:
-                                _LOGGER.error("Erreur WebSocket: %s", str(msg.data))
-                                break
-            except asyncio.TimeoutError:
-                _LOGGER.error("Timeout de la connexion WebSocket")
-                await asyncio.sleep(60)
-                continue
-            except aiohttp.ClientError as e:
-                _LOGGER.error("Erreur de connexion WebSocket: %s", str(e))
-                await asyncio.sleep(60)
-                continue
+                except asyncio.TimeoutError as te:
+                    _LOGGER.error("Timeout lors de la connexion: %s", str(te))
+                    await asyncio.sleep(5)
+                    continue
+                except aiohttp.ClientError as ce:
+                    _LOGGER.error("Erreur de connexion: %s", str(ce))
+                    await asyncio.sleep(5)
+                    continue
+                except Exception as e:
+                    _LOGGER.error("Erreur inattendue: %s", str(e))
+                    await asyncio.sleep(5)
+                    continue
 
         except Exception as e:
             _LOGGER.error("Erreur de connexion: %s", str(e))
-            await asyncio.sleep(60) 
+            await asyncio.sleep(5) 
