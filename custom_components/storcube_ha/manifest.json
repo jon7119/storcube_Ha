@@ -8,5 +8,6 @@
   "requirements": ["websockets>=10.0"],
   "iot_class": "local_push",
   "version": "1.0.0",
-  "config_flow": true
+  "config_flow": true,
+  "icon": "icons/storcube.png"
 } 
