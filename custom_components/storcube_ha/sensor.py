@@ -579,12 +579,12 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                             "Sec-WebSocket-Version": "13"
                         }
 
-                        async with websockets.legacy.client.connect(
+                        async with websockets.connect(
                             uri,
                             extra_headers=ws_headers,
                             ping_interval=None,
                             ping_timeout=None,
-                            close_timeout=None
+                            ssl=False
                         ) as websocket:
                             _LOGGER.info("Connexion WebSocket établie")
                             await handle_websocket_connection(websocket, config, hass)
