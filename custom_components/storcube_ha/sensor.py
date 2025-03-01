@@ -535,6 +535,7 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
         try:
             # Get authentication token
             async with aiohttp.ClientSession() as session:
+                _LOGGER.debug("Requesting authentication token...")
                 async with session.post(
                     TOKEN_URL,
                     json={
@@ -542,37 +543,51 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         "loginName": config[CONF_LOGIN_NAME],
                         "password": config[CONF_AUTH_PASSWORD],
                     },
+                    ssl=True,  # Force SSL verification
                 ) as response:
                     token_data = await response.json()
                     if token_data.get("code") != 200:
+                        _LOGGER.error("Failed to get token: %s", token_data.get("message", "Unknown error"))
                         raise Exception("Failed to get token")
                     token = token_data["data"]["token"]
+                    _LOGGER.debug("Successfully obtained authentication token")
 
-            # Connect to websocket with proper headers
+            # Connect to websocket with proper headers and SSL
             uri = f"{WS_URI}{config[CONF_DEVICE_ID]}"
+            _LOGGER.debug("Connecting to WebSocket at %s", uri)
+            
             headers = {
                 "Authorization": f"Bearer {token}",
-                "Upgrade": "websocket",
-                "Connection": "Upgrade",
+                "User-Agent": "HomeAssistant/StorcubeMonitor",
             }
+
             async with websockets.connect(
                 uri,
                 extra_headers=headers,
-                subprotocols=["mqtt"],
+                ssl=True,  # Force SSL verification
+                ping_interval=30,  # Keep connection alive
+                ping_timeout=10,
             ) as websocket:
-                _LOGGER.info("Connected to websocket")
+                _LOGGER.info("Successfully connected to WebSocket")
 
-                # Send initial subscription message
-                await websocket.send(json.dumps({
-                    "type": "subscribe",
+                # Send initial authentication message
+                auth_message = {
+                    "type": "auth",
+                    "token": token,
                     "deviceId": config[CONF_DEVICE_ID]
-                }))
+                }
+                await websocket.send(json.dumps(auth_message))
+                _LOGGER.debug("Sent authentication message")
 
                 while True:
                     try:
                         message = await websocket.recv()
                         data = json.loads(message)
                         _LOGGER.debug("Received data: %s", data)
+
+                        if data.get("type") == "auth_ok":
+                            _LOGGER.info("WebSocket authentication successful")
+                            continue
 
                         # Publish to MQTT
                         await mqtt.async_publish(
@@ -583,10 +598,16 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                             False,
                         )
 
-                    except websockets.ConnectionClosed:
-                        _LOGGER.warning("WebSocket connection closed, reconnecting...")
+                    except websockets.ConnectionClosed as e:
+                        _LOGGER.warning("WebSocket connection closed: %s", str(e))
                         break
+                    except json.JSONDecodeError as e:
+                        _LOGGER.error("Failed to decode message: %s", str(e))
+                        continue
+                    except Exception as e:
+                        _LOGGER.error("Error processing message: %s", str(e))
+                        continue
 
         except Exception as e:
-            _LOGGER.error("Error in websocket connection: %s", e)
+            _LOGGER.error("Error in websocket connection: %s", str(e))
             await asyncio.sleep(30)  # Wait before retrying 
