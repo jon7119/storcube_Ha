@@ -2,20 +2,22 @@
     "config": {
         "step": {
             "user": {
-                "title": "Configuration de la batterie Storcube",
-                "description": "Configurez votre batterie Storcube",
+                "title": "Configuration de la Batterie Storcube",
+                "description": "Configurez votre batterie Storcube avec les informations de connexion",
                 "data": {
                     "host": "Adresse du broker MQTT",
                     "port": "Port MQTT",
                     "device_id": "ID de l'appareil",
                     "app_code": "Code de l'application",
-                    "login_name": "Nom d'utilisateur",
-                    "auth_password": "Mot de passe"
+                    "login_name": "Nom d'utilisateur Baterway",
+                    "auth_password": "Mot de passe Baterway",
+                    "username": "Utilisateur MQTT",
+                    "password": "Mot de passe MQTT"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Échec de connexion",
+            "cannot_connect": "Échec de connexion au serveur Baterway",
             "invalid_auth": "Authentification invalide",
             "unknown": "Erreur inattendue"
         },
@@ -26,19 +28,19 @@
     "entity": {
         "sensor": {
             "battery_level": {
-                "name": "Niveau Batterie"
+                "name": "Niveau de batterie"
             },
             "battery_power": {
-                "name": "Puissance Batterie"
+                "name": "Puissance de la batterie"
             },
             "battery_voltage": {
-                "name": "Tension Batterie"
+                "name": "Tension de la batterie"
             },
             "battery_current": {
-                "name": "Courant Batterie"
+                "name": "Courant de la batterie"
             },
             "battery_temperature": {
-                "name": "Température Batterie"
+                "name": "Température de la batterie"
             },
             "battery_energy": {
                 "name": "Énergie Batterie"

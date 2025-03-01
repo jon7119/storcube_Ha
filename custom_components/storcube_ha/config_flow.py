@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 import voluptuous as vol
 import aiohttp
-import async_timeout
 
 from homeassistant import config_entries
 from homeassistant.const import (
@@ -31,50 +31,54 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): str,
+        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Required(CONF_DEVICE_ID): str,
+        vol.Optional(CONF_APP_CODE, default=DEFAULT_APP_CODE): str,
+        vol.Required(CONF_LOGIN_NAME): str,
+        vol.Required(CONF_AUTH_PASSWORD): str,
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+    }
+)
+
 class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Storcube Battery Monitor."""
 
     VERSION = 1
 
     async def async_step_user(
-        self, user_input: dict[str, any] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        errors = {}
-        
+        errors: dict[str, str] = {}
+
         if user_input is not None:
             try:
-                # Validate the data can be used to set up the integration
                 await self._test_credentials(user_input)
 
-                # Create the config entry
+                # Vérifier si l'appareil est déjà configuré
+                await self.async_set_unique_id(user_input[CONF_DEVICE_ID])
+                self._abort_if_unique_id_configured()
+
                 return self.async_create_entry(
                     title=f"Batterie Storcube {user_input[CONF_DEVICE_ID]}",
                     data=user_input,
                 )
+
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
+            except Exception as ex:
+                _LOGGER.exception("Erreur inattendue: %s", str(ex))
                 errors["base"] = "unknown"
 
-        # Show the form to the user
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-                    vol.Required(CONF_DEVICE_ID): str,
-                    vol.Optional(CONF_APP_CODE, default=DEFAULT_APP_CODE): str,
-                    vol.Required(CONF_LOGIN_NAME): str,
-                    vol.Required(CONF_AUTH_PASSWORD): str,
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
-                }
-            ),
+            data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
         )
 
@@ -89,17 +93,23 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "loginName": data[CONF_LOGIN_NAME],
                         "password": data[CONF_AUTH_PASSWORD],
                     },
+                    timeout=10,
                 ) as response:
                     if response.status != 200:
                         raise InvalidAuth
-                    
+
                     json_response = await response.json()
                     if json_response.get("code") != 200:
                         raise CannotConnect
-                    
+
                     return True
-        except aiohttp.ClientError:
-            raise CannotConnect
+
+        except aiohttp.ClientError as ex:
+            _LOGGER.error("Erreur de connexion: %s", str(ex))
+            raise CannotConnect from ex
+        except Exception as ex:
+            _LOGGER.error("Erreur inattendue lors du test des identifiants: %s", str(ex))
+            raise InvalidAuth from ex
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
