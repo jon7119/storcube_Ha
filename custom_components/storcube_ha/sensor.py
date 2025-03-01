@@ -49,6 +49,8 @@ from .const import (
     TOPIC_THRESHOLD,
     OUTPUT_URL,
     FIRMWARE_URL,
+    SET_POWER_URL,
+    SET_THRESHOLD_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,12 +75,19 @@ async def async_setup_entry(
         StorcubeBatteryCapacitySensor(config),
         StorcubeBatteryHealthSensor(config),
         StorcubeBatteryCyclesSensor(config),
+        StorcubeBatteryStatusSensor(config),
         
         # Capteurs solaires
         StorcubeSolarPowerSensor(config),
         StorcubeSolarVoltageSensor(config),
         StorcubeSolarCurrentSensor(config),
         StorcubeSolarEnergySensor(config),
+        
+        # Capteurs solaires pour le deuxième panneau
+        StorcubeSolarPowerSensor2(config),
+        StorcubeSolarVoltageSensor2(config),
+        StorcubeSolarCurrentSensor2(config),
+        StorcubeSolarEnergySensor2(config),
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
@@ -289,7 +298,7 @@ class StorcubeBatteryHealthSensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("battery_health")
+            self._attr_native_value = payload[0]['reserved']  # Assuming 'reserved' is the health metric
             self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery health: %s", e)
@@ -314,6 +323,26 @@ class StorcubeBatteryCyclesSensor(SensorEntity):
             self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery cycles: %s", e)
+
+class StorcubeBatteryStatusSensor(SensorEntity):
+    """Représentation de l'état de la batterie."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "État Batterie Storcube"
+        self._attr_device_class = None
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_status"
+        self._config = config
+        self._attr_native_value = None
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = 'online' if payload[0]['fgOnline'] == 1 else 'offline'
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating battery status: %s", e)
 
 class StorcubeSolarPowerSensor(SensorEntity):
     """Représentation de la puissance solaire."""
@@ -402,6 +431,94 @@ class StorcubeSolarEnergySensor(SensorEntity):
             self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar energy: %s", e)
+
+class StorcubeSolarPowerSensor2(SensorEntity):
+    """Représentation de la puissance solaire du deuxième panneau."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "Puissance Solaire 2 Storcube"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power_2"
+        self._config = config
+        self._attr_native_value = None
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("solar_power_2")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating solar power 2: %s", e)
+
+class StorcubeSolarVoltageSensor2(SensorEntity):
+    """Représentation de la tension solaire du deuxième panneau."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "Tension Solaire 2 Storcube"
+        self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+        self._attr_device_class = SensorDeviceClass.VOLTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_voltage_2"
+        self._config = config
+        self._attr_native_value = None
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("solar_voltage_2")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating solar voltage 2: %s", e)
+
+class StorcubeSolarCurrentSensor2(SensorEntity):
+    """Représentation du courant solaire du deuxième panneau."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "Courant Solaire 2 Storcube"
+        self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+        self._attr_device_class = SensorDeviceClass.CURRENT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_current_2"
+        self._config = config
+        self._attr_native_value = None
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("solar_current_2")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating solar current 2: %s", e)
+
+class StorcubeSolarEnergySensor2(SensorEntity):
+    """Représentation de l'énergie solaire produite par le deuxième panneau."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "Énergie Solaire 2 Storcube"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_2"
+        self._config = config
+        self._attr_native_value = None
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            self._attr_native_value = payload.get("solar_energy_2")
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating solar energy 2: %s", e)
 
 class StorcubeOutputPowerSensor(SensorEntity):
     """Représentation de la puissance de sortie."""
@@ -562,29 +679,16 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                             _LOGGER.error("Échec de l'authentification: %s", token_data.get("message", "Erreur inconnue"))
                             raise Exception("Échec de l'authentification")
                         token = token_data["data"]["token"]
-                        _LOGGER.info("Token obtenu avec succès")
+                        _LOGGER.info("Token obtenu avec succès: %s", token)
 
                         # Connect to websocket
                         uri = f"{WS_URI}{token}"
                         _LOGGER.debug("Connexion WebSocket à %s", uri)
 
-                        # Configuration de la connexion WebSocket
-                        ws_headers = {
-                            "Authorization": token,
-                            "Content-Type": "application/json",
-                            "User-Agent": "okhttp/3.12.11",
-                            "Host": "baterway.com",
-                            "Connection": "Upgrade",
-                            "Upgrade": "websocket",
-                            "Sec-WebSocket-Version": "13"
-                        }
-
                         async with websockets.connect(
                             uri,
-                            extra_headers=ws_headers,
-                            ping_interval=None,
-                            ping_timeout=None,
-                            ssl=False
+                            user_agent_header="okhttp/3.12.11",
+                            origin="http://baterway.com"
                         ) as websocket:
                             _LOGGER.info("Connexion WebSocket établie")
                             await handle_websocket_connection(websocket, config, hass)

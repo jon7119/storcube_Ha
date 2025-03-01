@@ -9,8 +9,8 @@
                     "port": "Port MQTT",
                     "device_id": "ID de l'appareil",
                     "app_code": "Code de l'application",
-                    "login_name": "Nom d'utilisateur",
-                    "auth_password": "Mot de passe"
+                    "login_name": "Nom d'utilisateur Mqtt",
+                    "auth_password": "Mot de passe Mqtt"
                 }
             }
         },
