@@ -568,7 +568,8 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
                         uri = f"{WS_URI}{token}"
                         _LOGGER.debug("Connexion WebSocket à %s", uri)
                         
-                        headers = {
+                        # Création des en-têtes pour le websocket
+                        ws_headers = {
                             "Authorization": token,
                             "Content-Type": "application/json",
                             "User-Agent": "okhttp/3.12.11"
@@ -576,11 +577,18 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType) -> None:
 
                         # Ne pas utiliser ssl=False si l'URI commence par ws://
                         if uri.startswith("wss://"):
-                            async with websockets.connect(uri, extra_headers=headers, ssl=False) as websocket:
+                            async with websockets.connect(
+                                uri,
+                                additional_headers=ws_headers,
+                                ssl=False
+                            ) as websocket:
                                 _LOGGER.info("Connexion WebSocket établie (SSL désactivé)")
                                 await handle_websocket_connection(websocket, config, hass)
                         else:
-                            async with websockets.connect(uri, extra_headers=headers) as websocket:
+                            async with websockets.connect(
+                                uri,
+                                additional_headers=ws_headers
+                            ) as websocket:
                                 _LOGGER.info("Connexion WebSocket établie (non-SSL)")
                                 await handle_websocket_connection(websocket, config, hass)
 
