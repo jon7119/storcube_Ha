@@ -107,8 +107,149 @@ async def async_setup_entry(
         hass.data[DOMAIN] = {}
     hass.data[DOMAIN][config_entry.entry_id] = {"sensors": sensors}
 
+    # Créer la vue Lovelace
+    await create_lovelace_view(hass, config_entry)
+
     # Start websocket connection
     asyncio.create_task(websocket_to_mqtt(hass, config, config_entry))
+
+async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Create the Lovelace view for Storcube."""
+    device_id = config_entry.data[CONF_DEVICE_ID]
+    
+    view_config = {
+        "path": "storcube",
+        "title": "Storcube Battery Monitor",
+        "icon": "mdi:battery-charging",
+        "badges": [],
+        "cards": [
+            {
+                "type": "energy-distribution",
+                "title": "Distribution d'Énergie",
+                "entities": {
+                    "solar_power": [
+                        f"sensor.{device_id}_solar_power",
+                        f"sensor.{device_id}_solar_power_2"
+                    ],
+                    "battery": {
+                        "entity": f"sensor.{device_id}_battery_level"
+                    },
+                    "grid_power": f"sensor.{device_id}_output_power"
+                }
+            },
+            {
+                "type": "grid",
+                "columns": 2,
+                "square": False,
+                "cards": [
+                    {
+                        "type": "gauge",
+                        "entity": f"sensor.{device_id}_battery_level",
+                        "name": "Niveau Batterie",
+                        "min": 0,
+                        "max": 100,
+                        "severity": {
+                            "green": 50,
+                            "yellow": 25,
+                            "red": 10
+                        }
+                    },
+                    {
+                        "type": "gauge",
+                        "entity": f"sensor.{device_id}_battery_health",
+                        "name": "Santé Batterie",
+                        "min": 0,
+                        "max": 100,
+                        "severity": {
+                            "green": 80,
+                            "yellow": 60,
+                            "red": 40
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "grid",
+                "columns": 3,
+                "cards": [
+                    {
+                        "type": "sensor",
+                        "entity": f"sensor.{device_id}_solar_power",
+                        "name": "Solaire 1",
+                        "icon": "mdi:solar-power",
+                        "graph": "line"
+                    },
+                    {
+                        "type": "sensor",
+                        "entity": f"sensor.{device_id}_solar_power_2",
+                        "name": "Solaire 2",
+                        "icon": "mdi:solar-power",
+                        "graph": "line"
+                    },
+                    {
+                        "type": "sensor",
+                        "entity": f"sensor.{device_id}_output_power",
+                        "name": "Sortie",
+                        "icon": "mdi:power-plug",
+                        "graph": "line"
+                    }
+                ]
+            },
+            {
+                "type": "grid",
+                "columns": 2,
+                "cards": [
+                    {
+                        "type": "sensor",
+                        "entity": f"sensor.{device_id}_battery_temperature",
+                        "name": "Température",
+                        "icon": "mdi:thermometer",
+                        "graph": "line"
+                    },
+                    {
+                        "type": "entity",
+                        "entity": f"sensor.{device_id}_battery_status",
+                        "name": "État",
+                        "icon": "mdi:battery-check"
+                    }
+                ]
+            },
+            {
+                "type": "history-graph",
+                "title": "Historique des Puissances",
+                "hours_to_show": 24,
+                "entities": [
+                    {
+                        "entity": f"sensor.{device_id}_solar_power",
+                        "name": "Solaire 1"
+                    },
+                    {
+                        "entity": f"sensor.{device_id}_solar_power_2",
+                        "name": "Solaire 2"
+                    },
+                    {
+                        "entity": f"sensor.{device_id}_output_power",
+                        "name": "Sortie"
+                    }
+                ]
+            }
+        ]
+    }
+
+    try:
+        # Ajouter la vue à la configuration Lovelace existante
+        await hass.services.async_call(
+            "lovelace",
+            "save_config",
+            {
+                "config": {
+                    "views": [view_config]
+                }
+            }
+        )
+        _LOGGER.info("Vue Lovelace Storcube créée avec succès")
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la création de la vue Lovelace: %s", str(e))
 
 class StorcubeBatteryLevelSensor(SensorEntity):
     """Représentation du niveau de batterie."""
@@ -157,7 +298,8 @@ class StorcubeBatteryPowerSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                self._attr_native_value = equip.get("power")  # Puissance en W
+                # La puissance de la batterie est la puissance de sortie (invPower)
+                self._attr_native_value = equip.get("invPower")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery power: %s", e)
@@ -180,8 +322,11 @@ class StorcubeBatteryThresholdSensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("battery_threshold")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                # Le seuil est le niveau de batterie minimum (à implémenter si disponible)
+                self._attr_native_value = None
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery threshold: %s", e)
 
@@ -204,11 +349,11 @@ class StorcubeBatteryVoltageSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                self._attr_native_value = equip.get("voltage")  # Tension en V
+                # La tension n'est pas disponible dans les données actuelles
+                self._attr_native_value = None
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery voltage: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeBatteryCurrentSensor(SensorEntity):
     """Représentation du courant de la batterie."""
@@ -227,8 +372,11 @@ class StorcubeBatteryCurrentSensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("battery_current")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                # Le courant n'est pas disponible dans les données actuelles
+                self._attr_native_value = None
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery current: %s", e)
 
@@ -296,8 +444,10 @@ class StorcubeBatteryCapacitySensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("battery_capacity")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                self._attr_native_value = equip.get("capacity")
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery capacity: %s", e)
 
@@ -413,7 +563,7 @@ class StorcubeSolarPowerSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                self._attr_native_value = equip.get("pv1power")  # Puissance solaire 1
+                self._attr_native_value = equip.get("pv1power")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power: %s", e)
@@ -504,7 +654,7 @@ class StorcubeSolarPowerSensor2(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                self._attr_native_value = equip.get("pv2power")  # Puissance solaire 2
+                self._attr_native_value = equip.get("pv2power")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power 2: %s", e)
@@ -593,13 +743,12 @@ class StorcubeOutputPowerSensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                self._attr_native_value = equip.get("invPower")  # Puissance de sortie
+            if isinstance(payload, dict):
+                # Utiliser totalInvPower pour la puissance totale de sortie
+                self._attr_native_value = payload.get("totalInvPower")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output power: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeOutputVoltageSensor(SensorEntity):
     """Représentation de la tension de sortie."""
@@ -773,32 +922,41 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entr
                                 try:
                                     message = await asyncio.wait_for(websocket.recv(), timeout=30)
                                     last_heartbeat = datetime.now()
-                                    _LOGGER.info("Message WebSocket reçu brut: %s", message)
+                                    _LOGGER.debug("Message WebSocket reçu brut: %s", message)
 
                                     if message.strip():
-                                        json_data = json.loads(message)
-                                        _LOGGER.info("Message décodé: %s", json_data)
-                                        
-                                        # Ignorer les messages "SUCCESS" et les dictionnaires vides
-                                        if json_data == "SUCCESS" or not json_data:
-                                            _LOGGER.info("Message ignoré: %s", json_data)
-                                            continue
+                                        try:
+                                            json_data = json.loads(message)
                                             
-                                        if isinstance(json_data, dict):
-                                            # Log toutes les clés du message
-                                            _LOGGER.info("Clés disponibles dans le message: %s", list(json_data.keys()))
+                                            # Ignorer silencieusement les messages "SUCCESS"
+                                            if json_data == "SUCCESS":
+                                                _LOGGER.debug("Message de confirmation 'SUCCESS' reçu")
+                                                continue
+                                                
+                                            # Ignorer les dictionnaires vides
+                                            if not json_data:
+                                                _LOGGER.debug("Message vide reçu")
+                                                continue
                                             
-                                            equip_data = next(iter(json_data.values()), {})
-                                            _LOGGER.info("Données d'équipement extraites: %s", equip_data)
-                                            
-                                            # Ne mettre à jour les capteurs que si equip_data contient des données
-                                            if equip_data and isinstance(equip_data, dict):
-                                                _LOGGER.info("Mise à jour des capteurs avec les données: %s", equip_data)
-                                                for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
-                                                    _LOGGER.debug("Mise à jour du capteur %s", sensor.name)
-                                                    sensor.handle_state_update(equip_data)
+                                            if isinstance(json_data, dict):
+                                                # Log toutes les clés du message
+                                                _LOGGER.debug("Structure du message reçu: %s", json_data)
+                                                
+                                                # Extraire les données d'équipement
+                                                equip_data = next(iter(json_data.values()), {})
+                                                
+                                                # Vérifier si les données d'équipement sont valides
+                                                if equip_data and isinstance(equip_data, dict) and "list" in equip_data:
+                                                    _LOGGER.info("Mise à jour des capteurs avec les données: %s", equip_data)
+                                                    for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                        sensor.handle_state_update(equip_data)
+                                                else:
+                                                    _LOGGER.debug("Message reçu sans données d'équipement valides")
                                             else:
-                                                _LOGGER.warning("Données d'équipement invalides ignorées: %s", equip_data)
+                                                _LOGGER.debug("Message reçu dans un format inattendu: %s", type(json_data))
+                                        except json.JSONDecodeError as e:
+                                            _LOGGER.warning("Impossible de décoder le message JSON: %s", e)
+                                            continue
 
                                 except asyncio.TimeoutError:
                                     time_since_last = (datetime.now() - last_heartbeat).total_seconds()
