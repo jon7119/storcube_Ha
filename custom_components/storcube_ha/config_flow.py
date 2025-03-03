@@ -79,6 +79,11 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return StorcubeOptionsFlowHandler(config_entry)
+
     async def _test_credentials(self, data: dict) -> bool:
         """Test if we can authenticate with the host."""
         try:
@@ -119,6 +124,82 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise CannotConnect
         except Exception as e:
             _LOGGER.error("Unexpected error: %s", str(e))
+            raise
+
+class StorcubeOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle Storcube options."""
+
+    def __init__(self, config_entry):
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        errors = {}
+
+        if user_input is not None:
+            try:
+                # Validate the new credentials
+                await self._test_credentials(user_input)
+                
+                # Update the config entry
+                return self.async_create_entry(title="", data=user_input)
+            
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception as e:
+                _LOGGER.exception("Unexpected exception: %s", str(e))
+                errors["base"] = "unknown"
+
+        # Préparer les valeurs par défaut à partir de la configuration existante
+        current_config = self.config_entry.data
+        
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=current_config.get(CONF_HOST)): str,
+                    vol.Optional(CONF_PORT, default=current_config.get(CONF_PORT, DEFAULT_PORT)): int,
+                    vol.Required(CONF_DEVICE_ID, default=current_config.get(CONF_DEVICE_ID)): str,
+                    vol.Optional(CONF_APP_CODE, default=current_config.get(CONF_APP_CODE, DEFAULT_APP_CODE)): str,
+                    vol.Required(CONF_LOGIN_NAME, default=current_config.get(CONF_LOGIN_NAME)): str,
+                    vol.Required(CONF_AUTH_PASSWORD, default=current_config.get(CONF_AUTH_PASSWORD)): str,
+                    vol.Required(CONF_USERNAME, default=current_config.get(CONF_USERNAME)): str,
+                    vol.Required(CONF_PASSWORD, default=current_config.get(CONF_PASSWORD)): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def _test_credentials(self, data: dict) -> bool:
+        """Test if we can authenticate with the host."""
+        try:
+            timeout = async_timeout.timeout(10)
+            async with timeout:
+                async with aiohttp.ClientSession() as session:
+                    auth_data = {
+                        "appCode": data[CONF_APP_CODE],
+                        "loginName": data[CONF_LOGIN_NAME],
+                        "password": data[CONF_AUTH_PASSWORD],
+                    }
+                    
+                    async with session.post(TOKEN_URL, json=auth_data) as response:
+                        if response.status != 200:
+                            raise InvalidAuth
+                        
+                        json_response = await response.json()
+                        if json_response.get("code") != 200:
+                            raise CannotConnect
+                        
+                        return True
+
+        except asyncio.TimeoutError:
+            raise CannotConnect
+        except aiohttp.ClientError:
+            raise CannotConnect
+        except Exception as e:
             raise
 
 class CannotConnect(HomeAssistantError):

@@ -252,7 +252,7 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
         _LOGGER.error("Erreur lors de la création de la vue Lovelace: %s", str(e))
 
 class StorcubeBatteryLevelSensor(SensorEntity):
-    """Représentation du niveau de batterie."""
+    """Représentation du niveau de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
@@ -270,11 +270,8 @@ class StorcubeBatteryLevelSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                value = equip.get("soc")
-                _LOGGER.info("Mise à jour niveau batterie: %s", value)
-                self._attr_native_value = value
+                self._attr_native_value = equip.get("soc")
                 self.async_write_ha_state()
-                _LOGGER.info("Niveau batterie mis à jour avec succès: %s", self._attr_native_value)
         except Exception as e:
             _LOGGER.error("Error updating battery level: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
@@ -298,7 +295,6 @@ class StorcubeBatteryPowerSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                # La puissance de la batterie est la puissance de sortie (invPower)
                 self._attr_native_value = equip.get("invPower")
                 self.async_write_ha_state()
         except Exception as e:
@@ -399,7 +395,7 @@ class StorcubeBatteryTemperatureSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                self._attr_native_value = equip.get("temp")  # Température en °C
+                self._attr_native_value = equip.get("temp")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery temperature: %s", e)
@@ -450,6 +446,7 @@ class StorcubeBatteryCapacitySensor(SensorEntity):
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery capacity: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeBatteryHealthSensor(SensorEntity):
     """Représentation de la santé de la batterie."""
@@ -469,10 +466,8 @@ class StorcubeBatteryHealthSensor(SensorEntity):
         """Handle state update from MQTT."""
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                # Prendre le premier équipement de la liste
                 equip = payload["list"][0]
                 if "capacity" in equip and "totalCapacity" in payload:
-                    # Calculer la santé en pourcentage basé sur la capacité actuelle vs totale
                     current_capacity = float(equip["capacity"])
                     total_capacity = float(payload["totalCapacity"])
                     if total_capacity > 0:
@@ -744,11 +739,11 @@ class StorcubeOutputPowerSensor(SensorEntity):
         """Handle state update from MQTT."""
         try:
             if isinstance(payload, dict):
-                # Utiliser totalInvPower pour la puissance totale de sortie
                 self._attr_native_value = payload.get("totalInvPower")
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output power: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeOutputVoltageSensor(SensorEntity):
     """Représentation de la tension de sortie."""
@@ -831,10 +826,13 @@ class StorcubeStatusSensor(SensorEntity):
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("status")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                self._attr_native_value = "En marche" if equip.get("isWork") == 1 else "Arrêté"
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating status: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeFirmwareVersionSensor(SensorEntity):
     """Représentation de la version du firmware."""

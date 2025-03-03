@@ -2,25 +2,50 @@
     "config": {
         "step": {
             "user": {
-                "title": "Configuration de la batterie Storcube",
+                "title": "Configuration de la Batterie Storcube",
                 "description": "Configurez votre batterie Storcube",
                 "data": {
-                    "host": "Adresse du broker MQTT",
+                    "host": "Adresse du Broker MQTT",
                     "port": "Port MQTT",
                     "device_id": "ID de l'appareil",
                     "app_code": "Code de l'application",
-                    "login_name": "Nom d'utilisateur Mqtt",
-                    "auth_password": "Mot de passe Mqtt"
+                    "login_name": "Nom d'utilisateur",
+                    "auth_password": "Mot de passe",
+                    "username": "Nom d'utilisateur MQTT",
+                    "password": "Mot de passe MQTT"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Échec de connexion",
+            "cannot_connect": "Échec de la connexion",
             "invalid_auth": "Authentification invalide",
             "unknown": "Erreur inattendue"
         },
         "abort": {
             "already_configured": "Cette batterie est déjà configurée"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Options de la Batterie Storcube",
+                "description": "Modifiez la configuration de votre batterie Storcube",
+                "data": {
+                    "host": "Adresse du Broker MQTT",
+                    "port": "Port MQTT",
+                    "device_id": "ID de l'appareil",
+                    "app_code": "Code de l'application",
+                    "login_name": "Nom d'utilisateur",
+                    "auth_password": "Mot de passe",
+                    "username": "Nom d'utilisateur MQTT",
+                    "password": "Mot de passe MQTT"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Échec de la connexion",
+            "invalid_auth": "Authentification invalide",
+            "unknown": "Erreur inattendue"
         }
     },
     "entity": {

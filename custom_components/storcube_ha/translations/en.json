@@ -10,17 +10,42 @@
                     "device_id": "Device ID",
                     "app_code": "Application Code",
                     "login_name": "Username",
-                    "auth_password": "Password"
+                    "auth_password": "Password",
+                    "username": "MQTT Username",
+                    "password": "MQTT Password"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Connection Failed",
-            "invalid_auth": "Invalid Authentication",
-            "unknown": "Unexpected Error"
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
         },
         "abort": {
             "already_configured": "This battery is already configured"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Storcube Battery Options",
+                "description": "Modify your Storcube battery configuration",
+                "data": {
+                    "host": "MQTT Broker Address",
+                    "port": "MQTT Port",
+                    "device_id": "Device ID",
+                    "app_code": "Application Code",
+                    "login_name": "Username",
+                    "auth_password": "Password",
+                    "username": "MQTT Username",
+                    "password": "MQTT Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
         }
     },
     "entity": {
