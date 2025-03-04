@@ -56,12 +56,6 @@
             "battery_power": {
                 "name": "Puissance Batterie"
             },
-            "battery_voltage": {
-                "name": "Tension Batterie"
-            },
-            "battery_current": {
-                "name": "Courant Batterie"
-            },
             "battery_temperature": {
                 "name": "Température Batterie"
             },
@@ -74,17 +68,8 @@
             "battery_health": {
                 "name": "Santé Batterie"
             },
-            "battery_cycles": {
-                "name": "Cycles Batterie"
-            },
             "solar_power": {
                 "name": "Puissance Solaire"
-            },
-            "solar_voltage": {
-                "name": "Tension Solaire"
-            },
-            "solar_current": {
-                "name": "Courant Solaire"
             },
             "solar_energy": {
                 "name": "Énergie Solaire Produite"
@@ -92,20 +77,50 @@
             "output_power": {
                 "name": "Puissance Sortie"
             },
-            "output_voltage": {
-                "name": "Tension Sortie"
-            },
-            "output_current": {
-                "name": "Courant Sortie"
-            },
-            "output_energy": {
-                "name": "Énergie Consommée"
-            },
             "status": {
                 "name": "État Système"
             },
             "firmware": {
                 "name": "Version Firmware"
+            },
+            "totalPv1power": {
+                "name": "Puissance Totale PV1"
+            },
+            "totalInvPower": {
+                "name": "Puissance Totale de l'Inverseur"
+            },
+            "temp": {
+                "name": "Température"
+            },
+            "pv1power": {
+                "name": "Puissance PV1"
+            },
+            "soc": {
+                "name": "État de Charge"
+            },
+            "pv2power": {
+                "name": "Puissance PV2"
+            },
+            "capacity": {
+                "name": "Capacité"
+            },
+            "isWork": {
+                "name": "État de Fonctionnement"
+            },
+            "invPower": {
+                "name": "Puissance de l'Inverseur"
+            },
+            "plugPower": {
+                "name": "Puissance de la Prise"
+            },
+            "totalCapacity": {
+                "name": "Capacité Totale"
+            },
+            "mainEquipId": {
+                "name": "ID de l'Équipement Principal"
+            },
+            "totalPv2power": {
+                "name": "Puissance Totale PV2"
             }
         }
     }

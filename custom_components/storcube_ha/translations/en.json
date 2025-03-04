@@ -106,6 +106,45 @@
             },
             "firmware": {
                 "name": "Firmware Version"
+            },
+            "totalPv1power": {
+                "name": "Total PV1 Power"
+            },
+            "totalInvPower": {
+                "name": "Total Inverter Power"
+            },
+            "temp": {
+                "name": "Temperature"
+            },
+            "pv1power": {
+                "name": "PV1 Power"
+            },
+            "soc": {
+                "name": "State of Charge"
+            },
+            "pv2power": {
+                "name": "PV2 Power"
+            },
+            "capacity": {
+                "name": "Capacity"
+            },
+            "isWork": {
+                "name": "Working Status"
+            },
+            "invPower": {
+                "name": "Inverter Power"
+            },
+            "plugPower": {
+                "name": "Plug Power"
+            },
+            "totalCapacity": {
+                "name": "Total Capacity"
+            },
+            "mainEquipId": {
+                "name": "Main Equipment ID"
+            },
+            "totalPv2power": {
+                "name": "Total PV2 Power"
             }
         }
     }
