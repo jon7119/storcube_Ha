@@ -11,9 +11,9 @@ Cette intégration permet de connecter votre batterie Storcube à Home Assistant
 - Capteurs disponibles :
   - Niveau de batterie (%)
   - Puissance (W)
-  - Seuil de batterie (%)
+  - Seuil de batterie (%) (en cours)
   - État de la batterie
-  - Version du firmware
+  - Version du firmware (en cours)
 
 ## Prérequis
 
