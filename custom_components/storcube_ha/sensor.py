@@ -75,12 +75,15 @@ async def async_setup_entry(
         
         # Capteurs solaires
         StorcubeSolarPowerSensor(config),
+        StorcubeSolarEnergySensor(config),
         
         # Capteurs solaires pour le deuxième panneau
         StorcubeSolarPowerSensor2(config),
+        StorcubeSolarEnergySensor2(config),
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
+        StorcubeOutputEnergySensor(config),
         
         # Capteurs système
         StorcubeStatusSensor(config),
@@ -277,18 +280,22 @@ class StorcubeBatteryLevelSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialiser le capteur."""
         self._attr_name = "Niveau Batterie Storcube"
-        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_native_unit_of_measurement = "%"
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_level"
         self._config = config
         self._attr_native_value = None
+        self._attr_icon = "mdi:battery-charging"
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Gérer la mise à jour de l'état."""
-        self._attr_native_value = payload['list'][0]['soc']  # État de charge
-        self.async_write_ha_state()
+        try:
+            self._attr_native_value = payload['list'][0]['soc']  # État de charge
+            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating battery level: %s", e)
 
 class StorcubeBatteryPowerSensor(SensorEntity):
     """Représentation de la puissance de la batterie."""
@@ -391,26 +398,24 @@ class StorcubeBatteryCapacitySensor(SensorEntity):
     """Représentation de la capacité de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
-        """Initialize the sensor."""
+        """Initialiser le capteur."""
         self._attr_name = "Capacité Batterie Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
-        self._attr_device_class = SensorDeviceClass.ENERGY_STORAGE
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "Wh"  # Unité de mesure
+        self._attr_device_class = SensorDeviceClass.BATTERY  # Classe d'entité pour la batterie
+        self._attr_state_class = SensorStateClass.MEASUREMENT  # Classe d'état
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_capacity"
         self._config = config
         self._attr_native_value = None
+        self._attr_icon = "mdi:battery-high"  # Icône
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+        """Gérer la mise à jour de l'état."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                self._attr_native_value = equip.get("capacity")
-                self.async_write_ha_state()
+            self._attr_native_value = payload['list'][0]['capacity']  # Capacité de la batterie
+            self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery capacity: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeBatteryHealthSensor(SensorEntity):
     """Représentation de la santé de la batterie."""
@@ -488,12 +493,13 @@ class StorcubeSolarPowerSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Puissance Solaire Storcube"
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_native_unit_of_measurement = "W"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power"
         self._config = config
         self._attr_native_value = None
+        self._attr_icon = "mdi:solar-power"
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -582,12 +588,13 @@ class StorcubeOutputPowerSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Puissance Sortie Storcube"
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_native_unit_of_measurement = "W"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_power"
         self._config = config
         self._attr_native_value = None
+        self._attr_icon = "mdi:flash"
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
