@@ -81,8 +81,8 @@ async def async_setup_entry(
         StorcubeSolarPowerSensor2(config),
         StorcubeSolarEnergySensor2(config),
         
-        # Capteur de puissance solaire totale
-        StorcubeSolarPowerTotalSensor(config),
+        # Capteur d'énergie solaire totale
+        StorcubeSolarEnergyTotalSensor(config),
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
@@ -675,16 +675,16 @@ class StorcubeFirmwareVersionSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating firmware version: %s", e)
 
-class StorcubeSolarPowerTotalSensor(SensorEntity):
-    """Représentation de la puissance solaire totale des deux panneaux."""
+class StorcubeSolarEnergyTotalSensor(SensorEntity):
+    """Représentation de l'énergie solaire totale des deux panneaux."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        self._attr_name = "Puissance Solaire Totale Storcube"
-        self._attr_native_unit_of_measurement = "W"  # Unité de mesure
-        self._attr_device_class = SensorDeviceClass.POWER  # Classe d'entité
-        self._attr_state_class = SensorStateClass.MEASUREMENT  # Classe d'état
-        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power_total"
+        self._attr_name = "Énergie Solaire Totale Storcube"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR  # Unité de mesure
+        self._attr_device_class = SensorDeviceClass.ENERGY  # Classe d'entité pour l'énergie
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING  # Classe d'état
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_total"
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:solar-power"  # Icône
@@ -695,12 +695,12 @@ class StorcubeSolarPowerTotalSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                pv1power = equip.get("pv1power", 0)  # Puissance du panneau 1
-                pv2power = equip.get("pv2power", 0)  # Puissance du panneau 2
-                self._attr_native_value = pv1power + pv2power  # Cumul des puissances
+                pv1energy = equip.get("totalPv1energy", 0)  # Énergie totale du panneau 1
+                pv2energy = equip.get("totalPv2energy", 0)  # Énergie totale du panneau 2
+                self._attr_native_value = pv1energy + pv2energy  # Cumul des énergies
                 self.async_write_ha_state()
         except Exception as e:
-            _LOGGER.error("Error updating total solar power: %s", e)
+            _LOGGER.error("Error updating total solar energy: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
 
 async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entry: ConfigEntry) -> None:
