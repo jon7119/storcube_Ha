@@ -67,10 +67,10 @@ async def async_setup_entry(
         # Capteurs de batterie
         StorcubeBatteryLevelSensor(config),
         StorcubeBatteryPowerSensor(config),
-        StorcubeBatteryThresholdSensor(config),
+        #StorcubeBatteryThresholdSensor(config),
         StorcubeBatteryTemperatureSensor(config),
         StorcubeBatteryCapacitySensor(config),
-        StorcubeBatteryHealthSensor(config),
+        #StorcubeBatteryHealthSensor(config),
         StorcubeBatteryStatusSensor(config),
         
         # Capteurs solaires
@@ -90,7 +90,7 @@ async def async_setup_entry(
         
         # Capteurs système
         StorcubeStatusSensor(config),
-        StorcubeFirmwareVersionSensor(config),
+        #StorcubeFirmwareVersionSensor(config),
     ]
 
     async_add_entities(sensors)
@@ -289,7 +289,7 @@ class StorcubeBatteryLevelSensor(SensorEntity):
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_level"
         self._config = config
         self._attr_native_value = None
-        self._attr_icon = "mdi:battery-charging"
+        self._attr_icon = "mdi:battery-high"  # Icône
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -409,7 +409,8 @@ class StorcubeBatteryCapacitySensor(SensorEntity):
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_capacity"
         self._config = config
         self._attr_native_value = None
-        self._attr_icon = "mdi:battery-high"  # Icône
+        self._attr_icon = "mdi:battery-charging"
+
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -550,7 +551,8 @@ class StorcubeSolarPowerSensor2(SensorEntity):
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power_2"
         self._config = config
         self._attr_native_value = None
-
+        self._attr_icon = "mdi:solar-power"
+        
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
