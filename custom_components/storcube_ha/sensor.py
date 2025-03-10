@@ -74,12 +74,15 @@ async def async_setup_entry(
         StorcubeBatteryStatusSensor(config),
         
         # Capteurs solaires
-        StorcubeSolarPowerSensor(config),
-        StorcubeSolarEnergySensor(config),
+        StorcubeSolarPowerSensor(config),  # Gardé
+        # StorcubeSolarEnergySensor(config),  # Supprimé
         
         # Capteurs solaires pour le deuxième panneau
-        StorcubeSolarPowerSensor2(config),
-        StorcubeSolarEnergySensor2(config),
+        StorcubeSolarPowerSensor2(config),  # Gardé
+        # StorcubeSolarEnergySensor2(config),  # Supprimé
+        
+        # Capteur d'énergie solaire totale
+        StorcubeSolarEnergyTotalSensor(config),  # Gardé
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
@@ -671,6 +674,34 @@ class StorcubeFirmwareVersionSensor(SensorEntity):
             self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating firmware version: %s", e)
+
+class StorcubeSolarEnergyTotalSensor(SensorEntity):
+    """Représentation de l'énergie solaire totale des deux panneaux."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        self._attr_name = "Énergie Solaire Totale Storcube"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR  # Unité de mesure
+        self._attr_device_class = SensorDeviceClass.ENERGY  # Classe d'entité pour l'énergie
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING  # Classe d'état
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_total"
+        self._config = config
+        self._attr_native_value = None
+        self._attr_icon = "mdi:solar-power"  # Icône
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Handle state update from MQTT."""
+        try:
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                pv1energy = equip.get("totalPv1energy", 0)  # Énergie totale du panneau 1
+                pv2energy = equip.get("totalPv2energy", 0)  # Énergie totale du panneau 2
+                self._attr_native_value = pv1energy + pv2energy  # Cumul des énergies
+                self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating total solar energy: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entry: ConfigEntry) -> None:
     """Handle websocket connection and forward data to MQTT."""
