@@ -4,6 +4,6 @@
   "domain": "storcube_ha",
   "documentation": "https://github.com/jon7119/storcube_Ha",
   "issue_tracker": "https://github.com/jon7119/storcube_Ha/issues",
-  "homeassistant": "2023.8.0"
+  "homeassistant": "2023.8.0",
   "icon": "icons/icon.png"
 } 
