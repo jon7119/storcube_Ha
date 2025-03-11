@@ -28,6 +28,7 @@ from .const import (
     CONF_AUTH_PASSWORD,
     DEFAULT_PORT,
 )
+from .version import __version__
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Storcube Battery Monitor component."""
+    _LOGGER.info("Initialisation de l'intégration Storcube Battery Monitor, version: %s", __version__)
     hass.data.setdefault(DOMAIN, {})
     return True
 
