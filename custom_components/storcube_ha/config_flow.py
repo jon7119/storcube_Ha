@@ -126,6 +126,19 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error("Unexpected error: %s", str(e))
             raise
 
+    async def async_step_reauth(self, entry_data):
+        """Handle reauth flow."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Handle reauth confirmation."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=vol.Schema({})
+            )
+        return await self.async_step_user()
+
 class StorcubeOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Storcube options."""
 

@@ -52,6 +52,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        coordinator = hass.data[DOMAIN].get(entry.entry_id)
+        if coordinator:
+            await coordinator.async_unsubscribe_mqtt()
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
@@ -59,4 +62,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry) 
+    await async_setup_entry(hass, entry)
+
+async def async_unsubscribe_mqtt(self):
+    """Se désabonner des topics MQTT."""
+    if self.mqtt_client:
+        self.mqtt_client.loop_stop()
+        self.mqtt_client.disconnect() 

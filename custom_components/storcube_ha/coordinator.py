@@ -19,6 +19,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.device_registry import DeviceRegistry
 from homeassistant.helpers import device_registry as dr
 from homeassistant.components import mqtt
+from homeassistant.helpers import storage
 
 from .const import (
     DOMAIN,
@@ -151,8 +152,15 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             "report": TOPIC_BATTERY_REPORT.format(device_id=equip_id),
         }
 
-    def get_auth_token(self):
+    async def get_auth_token(self):
         """Récupérer le token d'authentification."""
+        # Utilisez le stockage sécurisé pour stocker le token
+        storage_key = f"{DOMAIN}_auth_token"
+        token = await storage.async_get(self.hass, storage_key)
+        if token:
+            return token
+
+        # Si le token n'existe pas, effectuez l'authentification
         try:
             token_credentials = {
                 "appCode": self.config_entry.data[CONF_APP_CODE],
@@ -170,16 +178,22 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             if data.get('code') == 200:
                 _LOGGER.info("Token récupéré avec succès")
                 self._auth_token = data['data']['token']
+                await storage.async_set(self.hass, storage_key, self._auth_token)
                 return self._auth_token
             raise Exception(f"Erreur d'authentification: {data.get('message', 'Réponse inconnue')}")
         except requests.RequestException as e:
             _LOGGER.error("Erreur lors de la récupération du token: %s", e)
             return None
 
+    def token_is_expired(self):
+        """Vérifier si le token est expiré."""
+        # Implémentez votre logique pour vérifier l'expiration
+        return False  # Remplacez par votre logique
+
     async def set_power_value(self, new_power_value):
         """Modifier la puissance de sortie."""
         if not self._auth_token:
-            self._auth_token = self.get_auth_token()
+            self._auth_token = await self.get_auth_token()
             if not self._auth_token:
                 return False
 
@@ -213,7 +227,7 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
     async def set_threshold_value(self, new_threshold_value):
         """Modifier le seuil de batterie."""
         if not self._auth_token:
-            self._auth_token = self.get_auth_token()
+            self._auth_token = await self.get_auth_token()
             if not self._auth_token:
                 return False
 
@@ -249,7 +263,11 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update data via MQTT."""
-        return self.data
+        try:
+            return self.data
+        except Exception as e:
+            _LOGGER.error("Erreur lors de la mise à jour des données: %s", e)
+            # Implémentez une logique de reconnexion si nécessaire
 
     async def async_mqtt_message_received(self, msg):
         """Handle received MQTT message."""
@@ -392,12 +410,12 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("Vérifiez vos identifiants MQTT (nom d'utilisateur: %s)", 
                                 self.config_entry.data[CONF_USERNAME])
 
-        def on_disconnect(client, userdata, rc):
+        def on_disconnect(self, client, userdata, rc):
             """Callback lors de la déconnexion."""
             if rc != 0:
                 _LOGGER.error("Déconnexion MQTT inattendue avec le code %s", rc)
-            else:
-                _LOGGER.info("Déconnexion MQTT normale")
+                # Implémentez une logique de reconnexion ici
+                asyncio.create_task(self.reconnect_mqtt())
 
         def on_message(client, userdata, msg):
             """Callback lors de la réception d'un message."""
@@ -447,6 +465,16 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             self._connection_error = f"Erreur de connexion MQTT : {str(err)}"
             _LOGGER.error(self._connection_error)
             raise ConfigEntryAuthFailed(self._connection_error)
+
+    async def reconnect_mqtt(self):
+        """Reconnecter le client MQTT."""
+        while True:
+            try:
+                await self._setup_mqtt()
+                break  # Sortir de la boucle si la reconnexion réussit
+            except Exception as e:
+                _LOGGER.error("Erreur de reconnexion MQTT: %s", e)
+                await asyncio.sleep(5)  # Attendre avant de réessayer
 
     async def async_shutdown(self):
         """Arrêter proprement le coordinateur."""
