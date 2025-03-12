@@ -3,7 +3,7 @@
   "render_readme": true,
   "content_in_root": false,
   "homeassistant": "2023.8.0",
-  "hacs": "1.30.0",
+  "hacs": "1.0.0",
   "zip_release": true,
   "filename": "storcube_ha.zip"
 } 
