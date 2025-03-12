@@ -39,11 +39,6 @@ Cette intégration Home Assistant permet de surveiller et contrôler les batteri
 
 ## Versions
 
-### v1.0.1
-- Amélioration de la compatibilité avec le dashboard Énergie
-- Correction de bugs mineurs
-- Optimisation des performances
-
 ### v1.0.0
 - Version initiale
 - Support des capteurs de base
@@ -55,14 +50,4 @@ Si vous rencontrez des problèmes, veuillez consulter les journaux de Home Assis
 
 ## Contribution
 
-Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une pull request ou un ticket sur GitHub.
-
-## Licence
-
-Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
-
-## Badges
-
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-[![Validate with hassfest](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml)
-[![HACS Action](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml) 
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une pull request ou un ticket sur GitHub. 
