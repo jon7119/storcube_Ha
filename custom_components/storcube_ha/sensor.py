@@ -75,18 +75,18 @@ async def async_setup_entry(
         
         # Capteurs solaires
         StorcubeSolarPowerSensor(config),  # Gardé
-        # StorcubeSolarEnergySensor(config),  # Supprimé
+        StorcubeSolarEnergySensor(config),  # Réactivé pour le dashboard Énergie
         
         # Capteurs solaires pour le deuxième panneau
         StorcubeSolarPowerSensor2(config),  # Gardé
-        # StorcubeSolarEnergySensor2(config),  # Supprimé
+        StorcubeSolarEnergySensor2(config),  # Réactivé pour le dashboard Énergie
         
         # Capteur d'énergie solaire totale
         StorcubeSolarEnergyTotalSensor(config),  # Gardé
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
-        StorcubeOutputEnergySensor(config),
+        StorcubeOutputEnergySensor(config),  # Ajouté pour le dashboard Énergie
         
         # Capteurs système
         StorcubeStatusSensor(config),
@@ -497,13 +497,16 @@ class StorcubeSolarPowerSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Puissance Solaire Storcube"
-        self._attr_native_unit_of_measurement = "W"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power"
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:solar-power"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 1
+        self._attr_has_entity_name = True
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -512,6 +515,11 @@ class StorcubeSolarPowerSensor(SensorEntity):
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
                 self._attr_native_value = equip.get("pv1power")
+                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+                self._attr_extra_state_attributes = {
+                    "last_reset": None,
+                    "is_solar_production": True  # Attribut personnalisé pour identifier cette entité comme production solaire
+                }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power: %s", e)
@@ -523,21 +531,48 @@ class StorcubeSolarEnergySensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Énergie Solaire Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy"
         self._config = config
-        self._attr_native_value = None
+        self._attr_native_value = 0
+        self._attr_icon = "mdi:solar-power"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 2
+        self._last_power = 0
+        self._last_update_time = None
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("solar_energy")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                # Calculer l'énergie à partir de la puissance
+                current_power = equip.get("pv1power", 0)
+                current_time = datetime.now()
+                
+                # Si nous avons une mesure précédente, calculer l'énergie
+                if self._last_update_time is not None and current_power > 0:
+                    # Calculer le temps écoulé en heures
+                    time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
+                    energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
+                    # Ajouter à la valeur totale
+                    if self._attr_native_value is None:
+                        self._attr_native_value = energy_increment
+                    else:
+                        self._attr_native_value += energy_increment
+                
+                # Mettre à jour les valeurs pour le prochain calcul
+                self._last_power = current_power
+                self._last_update_time = current_time
+                
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar energy: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeSolarPowerSensor2(SensorEntity):
     """Représentation de la puissance solaire du deuxième panneau."""
@@ -552,6 +587,9 @@ class StorcubeSolarPowerSensor2(SensorEntity):
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:solar-power"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 1
+        self._attr_has_entity_name = True
         
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -560,6 +598,11 @@ class StorcubeSolarPowerSensor2(SensorEntity):
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
                 self._attr_native_value = equip.get("pv2power")
+                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+                self._attr_extra_state_attributes = {
+                    "last_reset": None,
+                    "is_solar_production": True  # Attribut personnalisé pour identifier cette entité comme production solaire
+                }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power 2: %s", e)
@@ -571,21 +614,48 @@ class StorcubeSolarEnergySensor2(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Énergie Solaire 2 Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_2"
         self._config = config
-        self._attr_native_value = None
+        self._attr_native_value = 0
+        self._attr_icon = "mdi:solar-power"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 2
+        self._last_power = 0
+        self._last_update_time = None
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("solar_energy_2")
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                # Calculer l'énergie à partir de la puissance
+                current_power = equip.get("pv2power", 0)
+                current_time = datetime.now()
+                
+                # Si nous avons une mesure précédente, calculer l'énergie
+                if self._last_update_time is not None and current_power > 0:
+                    # Calculer le temps écoulé en heures
+                    time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
+                    energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
+                    # Ajouter à la valeur totale
+                    if self._attr_native_value is None:
+                        self._attr_native_value = energy_increment
+                    else:
+                        self._attr_native_value += energy_increment
+                
+                # Mettre à jour les valeurs pour le prochain calcul
+                self._last_power = current_power
+                self._last_update_time = current_time
+                
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar energy 2: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeOutputPowerSensor(SensorEntity):
     """Représentation de la puissance de sortie."""
@@ -593,13 +663,16 @@ class StorcubeOutputPowerSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Puissance Sortie Storcube"
-        self._attr_native_unit_of_measurement = "W"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_power"
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:flash"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 1
+        self._attr_has_entity_name = True
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -607,32 +680,64 @@ class StorcubeOutputPowerSensor(SensorEntity):
         try:
             if isinstance(payload, dict):
                 self._attr_native_value = payload.get("totalInvPower")
+                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+                self._attr_extra_state_attributes = {
+                    "last_reset": None,  # Important pour les compteurs d'énergie
+                    "is_battery_output": True  # Attribut personnalisé pour identifier cette entité comme sortie de batterie
+                }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output power: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeOutputEnergySensor(SensorEntity):
-    """Représentation de l'énergie consommée."""
+    """Représentation de l'énergie de sortie cumulée."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
-        self._attr_name = "Énergie Consommée Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_name = "Énergie Sortie Storcube"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_energy"
         self._config = config
-        self._attr_native_value = None
+        self._attr_native_value = 0
+        self._attr_icon = "mdi:lightning-bolt"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 2
+        self._last_power = 0
+        self._last_update_time = None
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
-            self._attr_native_value = payload.get("output_energy")
-            self.async_write_ha_state()
+            if isinstance(payload, dict):
+                # Calculer l'énergie à partir de la puissance
+                # Note: Ceci est une estimation simplifiée, idéalement l'appareil devrait fournir cette valeur
+                current_power = payload.get("totalInvPower", 0)
+                current_time = datetime.now()
+                
+                # Si nous avons une mesure précédente, calculer l'énergie
+                if self._last_update_time is not None and current_power > 0:
+                    # Calculer le temps écoulé en heures
+                    time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
+                    energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
+                    # Ajouter à la valeur totale
+                    if self._attr_native_value is None:
+                        self._attr_native_value = energy_increment
+                    else:
+                        self._attr_native_value += energy_increment
+                
+                # Mettre à jour les valeurs pour le prochain calcul
+                self._last_power = current_power
+                self._last_update_time = current_time
+                
+                self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output energy: %s", e)
+            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeStatusSensor(SensorEntity):
     """Représentation de l'état du système."""
