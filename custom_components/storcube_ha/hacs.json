@@ -1,0 +1,8 @@
+{
+  "name": "Storcube Battery Monitor",
+  "render_readme": true,
+  "content_in_root": false,
+  "homeassistant": "2023.8.0",
+  "hacs": "1.0.0",
+  "filename": "storcube_ha.zip"
+} 

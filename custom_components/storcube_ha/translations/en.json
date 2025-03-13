@@ -1,0 +1,151 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Storcube Battery Configuration",
+                "description": "Configure your Storcube battery",
+                "data": {
+                    "host": "MQTT Broker Address",
+                    "port": "MQTT Port",
+                    "device_id": "Device ID",
+                    "app_code": "Application Code",
+                    "login_name": "Username",
+                    "auth_password": "Password",
+                    "username": "MQTT Username",
+                    "password": "MQTT Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "abort": {
+            "already_configured": "This battery is already configured"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Storcube Battery Options",
+                "description": "Modify your Storcube battery configuration",
+                "data": {
+                    "host": "MQTT Broker Address",
+                    "port": "MQTT Port",
+                    "device_id": "Device ID",
+                    "app_code": "Application Code",
+                    "login_name": "Username",
+                    "auth_password": "Password",
+                    "username": "MQTT Username",
+                    "password": "MQTT Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        }
+    },
+    "entity": {
+        "sensor": {
+            "battery_level": {
+                "name": "Battery Level"
+            },
+            "battery_power": {
+                "name": "Battery Power"
+            },
+            "battery_voltage": {
+                "name": "Battery Voltage"
+            },
+            "battery_current": {
+                "name": "Battery Current"
+            },
+            "battery_temperature": {
+                "name": "Battery Temperature"
+            },
+            "battery_energy": {
+                "name": "Battery Energy"
+            },
+            "battery_capacity": {
+                "name": "Battery Capacity"
+            },
+            "battery_health": {
+                "name": "Battery Health"
+            },
+            "battery_cycles": {
+                "name": "Battery Cycles"
+            },
+            "solar_power": {
+                "name": "Solar Power"
+            },
+            "solar_voltage": {
+                "name": "Solar Voltage"
+            },
+            "solar_current": {
+                "name": "Solar Current"
+            },
+            "solar_energy": {
+                "name": "Solar Energy Produced"
+            },
+            "output_power": {
+                "name": "Output Power"
+            },
+            "output_voltage": {
+                "name": "Output Voltage"
+            },
+            "output_current": {
+                "name": "Output Current"
+            },
+            "output_energy": {
+                "name": "Energy Consumed"
+            },
+            "status": {
+                "name": "System Status"
+            },
+            "firmware": {
+                "name": "Firmware Version"
+            },
+            "totalPv1power": {
+                "name": "Total PV1 Power"
+            },
+            "totalInvPower": {
+                "name": "Total Inverter Power"
+            },
+            "temp": {
+                "name": "Temperature"
+            },
+            "pv1power": {
+                "name": "PV1 Power"
+            },
+            "soc": {
+                "name": "State of Charge"
+            },
+            "pv2power": {
+                "name": "PV2 Power"
+            },
+            "capacity": {
+                "name": "Capacity"
+            },
+            "isWork": {
+                "name": "Working Status"
+            },
+            "invPower": {
+                "name": "Inverter Power"
+            },
+            "plugPower": {
+                "name": "Plug Power"
+            },
+            "totalCapacity": {
+                "name": "Total Capacity"
+            },
+            "mainEquipId": {
+                "name": "Main Equipment ID"
+            },
+            "totalPv2power": {
+                "name": "Total PV2 Power"
+            }
+        }
+    }
+} 
