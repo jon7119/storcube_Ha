@@ -1,61 +1,98 @@
-# Storcube Battery Monitor
+# Storcube Battery Monitor pour Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-
-Cette intégration Home Assistant permet de surveiller et contrôler les batteries Storcube.
+Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT. Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
 
 ## Fonctionnalités
 
-- Surveillance du niveau de batterie
-- Surveillance de la puissance de charge/décharge
-- Surveillance de la température
-- Surveillance de la production solaire
-- Contrôle de la puissance de sortie
-- Compatible avec le dashboard Énergie de Home Assistant
+- Récupération des données de la batterie en temps réel via WebSocket
+- Transmission des données via MQTT
+- Configuration via l'interface utilisateur de Home Assistant
+- Gestion automatique des reconnexions
+- Capteurs disponibles :
+  - Niveau de batterie (%)
+  - Puissance (W)
+  - Seuil de batterie (%) (en cours)
+  - État de la batterie
+  - Version du firmware (en cours)
+
+## Prérequis
+
+- Home Assistant
+- Un broker MQTT configuré et fonctionnel
+- Les informations de connexion à votre batterie Storcube :
+  - Device ID (identifiant de votre batterie)
+  - App Code (par défaut : Storcube)
+  - Login Name (votre identifiant Baterway)
+  - Password (votre mot de passe Baterway)
 
 ## Installation
 
-### Installation via HACS
+### Option 1 : Via HACS (recommandé)
 
-1. Assurez-vous d'avoir [HACS](https://hacs.xyz/) installé
-2. Allez dans HACS > Intégrations > Menu (trois points) > Dépôts personnalisés
-3. Ajoutez l'URL du dépôt : `https://github.com/jon7119/storcube_Ha`
-4. Cliquez sur "Ajouter"
-5. Recherchez "Storcube Battery Monitor" dans les intégrations HACS
-6. Cliquez sur "Télécharger"
-7. Redémarrez Home Assistant
+1. **Installation de HACS** (si pas déjà fait) :
+   - Suivez le [guide d'installation de HACS](https://hacs.xyz/docs/setup/download)
+   - Redémarrez Home Assistant après l'installation
 
-### Installation manuelle
+2. **Ajout du dépôt personnalisé** :
+   - Ouvrez HACS dans Home Assistant
+   - Allez dans l'onglet "Intégrations"
+   - Cliquez sur le menu (3 points) en haut à droite
+   - Sélectionnez "Dépôts personnalisés"
+   - Collez l'URL : `https://github.com/jon7119/storcube_Ha`
+   - Sélectionnez la catégorie : "Integration"
+   - Cliquez sur "Ajouter"
 
-1. Téléchargez le dossier `custom_components/storcube_ha`
-2. Copiez-le dans votre dossier `custom_components`
-3. Redémarrez Home Assistant
+3. **Installation de l'intégration** :
+   - Rafraîchissez la page HACS si nécessaire
+   - Recherchez "Storcube Battery Monitor"
+   - Cliquez sur "Télécharger"
+   - Redémarrez Home Assistant
+
+### Option 2 : Installation manuelle
+
+1. Téléchargez la dernière version depuis [GitHub](https://github.com/jon7119/storcube_Ha)
+2. Décompressez l'archive
+3. Copiez le dossier `custom_components/storcube_ha` dans le dossier `custom_components` de votre installation Home Assistant
+4. Redémarrez Home Assistant
 
 ## Configuration
 
-1. Allez dans Paramètres > Appareils et services > Ajouter une intégration
-2. Recherchez "Storcube Battery Monitor"
-3. Suivez les instructions pour configurer l'intégration
+Après l'installation (via HACS ou manuellement) :
 
-## Versions
-
-### v1.0.1
-- Amélioration de la compatibilité avec le dashboard Énergie
-- Correction de bugs mineurs
-- Optimisation des performances
-
-### v1.0.0
-- Version initiale
-- Support des capteurs de base
-- Support du dashboard Énergie
+1. Dans Home Assistant, allez dans Configuration > Intégrations
+2. Cliquez sur le bouton "+" pour ajouter une nouvelle intégration
+3. Recherchez "Storcube Battery Monitor"
+4. Remplissez les informations requises :
+   - Adresse du broker MQTT (ex: 192.168.1.xxx)
+   - Port MQTT (par défaut : 1883)
+   - Device ID (sur l'étiquette de votre batterie)
+   - App Code (par défaut : Storcube)
+   - Login Name (votre identifiant Baterway)
+   - Password (votre mot de passe Baterway)
+   - Nom d'utilisateur MQTT
+   - Mot de passe MQTT
 
 ## Dépannage
 
-Si vous rencontrez des problèmes, veuillez consulter les journaux de Home Assistant ou ouvrir un ticket sur GitHub.
+### Les données ne sont pas mises à jour
 
-## Contribution
+1. Vérifiez que votre broker MQTT est accessible
+2. Vérifiez les logs de Home Assistant pour plus d'informations
+3. Assurez-vous que vos identifiants Baterway sont corrects
+4. Vérifiez que votre Device ID correspond bien à celui de votre batterie
 
-Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une pull request ou un ticket sur GitHub.
+### Erreurs de connexion
+
+1. Vérifiez votre connexion Internet
+2. Vérifiez que le serveur Baterway est accessible
+3. Vérifiez vos identifiants dans la configuration
+
+## Support
+
+Si vous rencontrez des problèmes ou avez des questions :
+
+1. Consultez la [documentation](https://github.com/jon7119/storcube_Ha)
+2. Ouvrez une [issue sur GitHub](https://github.com/jon7119/storcube_Ha/issues)
 
 ## Licence
 

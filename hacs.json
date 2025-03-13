@@ -1,8 +1,9 @@
 {
   "name": "Storcube Battery Monitor",
   "render_readme": true,
-  "content_in_root": false,
+  "domain": "storcube_ha",
+  "documentation": "https://github.com/jon7119/storcube_Ha",
+  "issue_tracker": "https://github.com/jon7119/storcube_Ha/issues",
   "homeassistant": "2023.8.0",
-  "hacs": "1.0.0",
-  "zip_release": true,
+  "icon": "icons/icon.png"
 } 

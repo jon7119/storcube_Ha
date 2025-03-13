@@ -788,13 +788,18 @@ class StorcubeSolarEnergyTotalSensor(SensorEntity):
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
         self._attr_name = "Énergie Solaire Totale Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR  # Unité de mesure
-        self._attr_device_class = SensorDeviceClass.ENERGY  # Classe d'entité pour l'énergie
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING  # Classe d'état
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR  # Changé en kWh pour être cohérent avec les autres capteurs
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_total"
         self._config = config
-        self._attr_native_value = None
-        self._attr_icon = "mdi:solar-power"  # Icône
+        self._attr_native_value = 0  # Initialisé à 0 au lieu de None
+        self._attr_icon = "mdi:solar-power"
+        # Attributs pour le dashboard Énergie
+        self._attr_suggested_display_precision = 2
+        self._last_power_pv1 = 0
+        self._last_power_pv2 = 0
+        self._last_update_time = None
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -802,10 +807,48 @@ class StorcubeSolarEnergyTotalSensor(SensorEntity):
         try:
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
-                pv1energy = equip.get("totalPv1energy", 0)  # Énergie totale du panneau 1
-                pv2energy = equip.get("totalPv2energy", 0)  # Énergie totale du panneau 2
-                self._attr_native_value = pv1energy + pv2energy  # Cumul des énergies
+                
+                # Récupérer les puissances actuelles des deux panneaux
+                current_power_pv1 = equip.get("pv1power", 0)
+                current_power_pv2 = equip.get("pv2power", 0)
+                current_time = datetime.now()
+                
+                # Calculer la puissance totale
+                total_current_power = current_power_pv1 + current_power_pv2
+                total_last_power = self._last_power_pv1 + self._last_power_pv2
+                
+                # Si nous avons une mesure précédente, calculer l'énergie
+                if self._last_update_time is not None and total_current_power > 0:
+                    # Calculer le temps écoulé en heures
+                    time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
+                    energy_increment = ((total_last_power + total_current_power) / 2) * time_diff / 1000
+                    # Ajouter à la valeur totale
+                    if self._attr_native_value is None:
+                        self._attr_native_value = energy_increment
+                    else:
+                        self._attr_native_value += energy_increment
+                
+                # Mettre à jour les valeurs pour le prochain calcul
+                self._last_power_pv1 = current_power_pv1
+                self._last_power_pv2 = current_power_pv2
+                self._last_update_time = current_time
+                
+                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+                self._attr_extra_state_attributes = {
+                    "last_reset": None,
+                    "is_solar_production": True,
+                    "pv1_power": current_power_pv1,
+                    "pv2_power": current_power_pv2,
+                    "total_power": total_current_power
+                }
+                
                 self.async_write_ha_state()
+                
+                _LOGGER.debug(
+                    "Mise à jour énergie solaire totale: PV1=%sW, PV2=%sW, Total=%sW, Énergie cumulée=%skWh",
+                    current_power_pv1, current_power_pv2, total_current_power, self._attr_native_value
+                )
         except Exception as e:
             _LOGGER.error("Error updating total solar energy: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
