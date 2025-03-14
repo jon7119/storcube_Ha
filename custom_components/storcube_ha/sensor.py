@@ -542,28 +542,39 @@ class StorcubeSolarEnergySensor(SensorEntity):
         self._attr_suggested_display_precision = 2
         self._last_power = 0
         self._last_update_time = None
+        _LOGGER.debug("Capteur d'énergie solaire initialisé avec valeur: %s", self._attr_native_value)
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
+            _LOGGER.debug("Mise à jour du capteur d'énergie solaire avec payload: %s", payload)
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
                 # Calculer l'énergie à partir de la puissance
                 current_power = equip.get("pv1power", 0)
+                _LOGGER.debug("Puissance solaire actuelle: %s W", current_power)
                 current_time = datetime.now()
                 
                 # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None and current_power > 0:
+                if self._last_update_time is not None:
                     # Calculer le temps écoulé en heures
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
+                    
                     # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
+                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
+                    
                     # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
+                    
+                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
+                else:
+                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
                 # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power = current_power
@@ -707,28 +718,39 @@ class StorcubeOutputEnergySensor(SensorEntity):
         self._attr_suggested_display_precision = 2
         self._last_power = 0
         self._last_update_time = None
+        _LOGGER.debug("Capteur d'énergie de sortie initialisé avec valeur: %s", self._attr_native_value)
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
+            _LOGGER.debug("Mise à jour du capteur d'énergie de sortie avec payload: %s", payload)
             if isinstance(payload, dict):
                 # Calculer l'énergie à partir de la puissance
                 # Note: Ceci est une estimation simplifiée, idéalement l'appareil devrait fournir cette valeur
                 current_power = payload.get("totalInvPower", 0)
+                _LOGGER.debug("Puissance de sortie actuelle: %s W", current_power)
                 current_time = datetime.now()
                 
                 # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None and current_power > 0:
+                if self._last_update_time is not None:
                     # Calculer le temps écoulé en heures
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
+                    
                     # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
+                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
+                    
                     # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
+                    
+                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
+                else:
+                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
                 # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power = current_power
@@ -800,34 +822,47 @@ class StorcubeSolarEnergyTotalSensor(SensorEntity):
         self._last_power_pv1 = 0
         self._last_power_pv2 = 0
         self._last_update_time = None
+        _LOGGER.debug("Capteur d'énergie solaire totale initialisé avec valeur: %s", self._attr_native_value)
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
         try:
+            _LOGGER.debug("Mise à jour du capteur d'énergie solaire totale avec payload: %s", payload)
             if isinstance(payload, dict) and "list" in payload and payload["list"]:
                 equip = payload["list"][0]
                 
                 # Récupérer les puissances actuelles des deux panneaux
                 current_power_pv1 = equip.get("pv1power", 0)
                 current_power_pv2 = equip.get("pv2power", 0)
+                _LOGGER.debug("Puissances actuelles: PV1=%sW, PV2=%sW", current_power_pv1, current_power_pv2)
                 current_time = datetime.now()
                 
                 # Calculer la puissance totale
                 total_current_power = current_power_pv1 + current_power_pv2
                 total_last_power = self._last_power_pv1 + self._last_power_pv2
+                _LOGGER.debug("Puissance totale actuelle: %sW, Puissance totale précédente: %sW", 
+                             total_current_power, total_last_power)
                 
                 # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None and total_current_power > 0:
+                if self._last_update_time is not None:
                     # Calculer le temps écoulé en heures
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
+                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
+                    
                     # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((total_last_power + total_current_power) / 2) * time_diff / 1000
+                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
+                    
                     # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
+                    
+                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
+                else:
+                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
                 # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power_pv1 = current_power_pv1
@@ -844,11 +879,6 @@ class StorcubeSolarEnergyTotalSensor(SensorEntity):
                 }
                 
                 self.async_write_ha_state()
-                
-                _LOGGER.debug(
-                    "Mise à jour énergie solaire totale: PV1=%sW, PV2=%sW, Total=%sW, Énergie cumulée=%skWh",
-                    current_power_pv1, current_power_pv2, total_current_power, self._attr_native_value
-                )
         except Exception as e:
             _LOGGER.error("Error updating total solar energy: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
