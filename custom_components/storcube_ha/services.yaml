@@ -26,4 +26,21 @@ set_threshold:
         number:
           min: 0
           max: 100
-          unit_of_measurement: "%" 
+          unit_of_measurement: "%"
+
+# Service pour récupérer les informations de scène
+get_scene_info:
+  name: Récupérer les informations de scène
+  description: Récupère les informations détaillées de l'API scene/user/list/V2.
+  fields:
+    equip_id:
+      name: ID de l'équipement
+      description: ID de l'équipement (optionnel, utilisera le premier équipement détecté si non spécifié)
+      required: false
+      selector:
+        text:
+
+# Service pour forcer la mise à jour des données
+refresh_data:
+  name: Rafraîchir les données
+  description: Force la mise à jour immédiate de toutes les données. 

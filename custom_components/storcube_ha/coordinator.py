@@ -5,6 +5,8 @@ from datetime import timedelta
 import requests
 import json
 import websockets
+import aiohttp
+from datetime import datetime
 
 import paho.mqtt.client as mqtt
 from homeassistant.core import HomeAssistant
@@ -262,12 +264,46 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         return False
 
     async def _async_update_data(self):
-        """Update data via MQTT."""
+        """Update data via MQTT and API."""
         try:
+            # Récupérer les informations de l'API scene/user/list/V2
+            try:
+                _LOGGER.debug("Début de la mise à jour des données via API")
+                
+                # Vérifier si le token est valide
+                if not self._auth_token or self.token_is_expired():
+                    _LOGGER.debug("Token non disponible ou expiré, récupération d'un nouveau token")
+                    self._auth_token = await self.get_auth_token()
+                
+                # Récupérer les données de l'API
+                scene_info = await self.get_scene_user_list()
+                if scene_info:
+                    _LOGGER.info("Informations scene/user/list/V2 récupérées avec succès")
+                    
+                    # Stocker les données dans le coordinateur
+                    self.data["scene_info"] = scene_info
+                    
+                    # Notifier les capteurs de la mise à jour
+                    for sensor in self.hass.data[DOMAIN].get(self.config_entry.entry_id, {}).get("sensors", []):
+                        if hasattr(sensor, "handle_state_update"):
+                            await self.hass.async_add_executor_job(
+                                sensor.handle_state_update, self.data
+                            )
+                    
+                    _LOGGER.debug("Mise à jour des capteurs terminée")
+                else:
+                    _LOGGER.warning("Impossible de récupérer les informations scene/user/list/V2")
+            except Exception as e:
+                _LOGGER.error("Erreur lors de la récupération des informations scene/user/list/V2: %s", e)
+                import traceback
+                _LOGGER.error("Traceback: %s", traceback.format_exc())
+            
             return self.data
         except Exception as e:
             _LOGGER.error("Erreur lors de la mise à jour des données: %s", e)
-            # Implémentez une logique de reconnexion si nécessaire
+            import traceback
+            _LOGGER.error("Traceback: %s", traceback.format_exc())
+            return self.data
 
     async def async_mqtt_message_received(self, msg):
         """Handle received MQTT message."""
@@ -488,4 +524,154 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         if self.mqtt_client:
             _LOGGER.info("Arrêt du coordinateur Storcube")
             self.mqtt_client.loop_stop()
-            self.mqtt_client.disconnect() 
+            self.mqtt_client.disconnect()
+
+    async def get_scene_user_list(self, equip_id=None):
+        """Récupérer les informations de l'API scene/user/list/V2."""
+        try:
+            if not self._auth_token:
+                _LOGGER.debug("Aucun token d'authentification disponible, tentative de récupération")
+                self._auth_token = await self.get_auth_token()
+                if not self._auth_token:
+                    _LOGGER.error("Impossible de récupérer le token d'authentification")
+                    return None
+
+            # Si aucun equipId n'est fourni, utiliser le premier appareil connu
+            if not equip_id and self._known_devices:
+                equip_id = list(self._known_devices)[0]
+                _LOGGER.debug("Utilisation de l'equipId automatique: %s", equip_id)
+            elif not equip_id:
+                # Si aucun appareil n'est connu, utiliser l'ID de l'appareil configuré
+                equip_id = self.config_entry.data.get(CONF_DEVICE_ID)
+                _LOGGER.debug("Utilisation de l'equipId configuré: %s", equip_id)
+            
+            if not equip_id:
+                _LOGGER.error("Aucun equipId disponible pour la requête scene/user/list/V2")
+                return None
+
+            headers = {
+                "Authorization": self._auth_token,
+                "Content-Type": "application/json",
+                "appCode": self.config_entry.data[CONF_APP_CODE]
+            }
+            
+            url = f"{OUTPUT_URL}?equipId={equip_id}"
+            
+            _LOGGER.debug("Requête à l'API scene/user/list/V2 pour equipId=%s avec URL=%s", equip_id, url)
+            _LOGGER.debug("En-têtes de la requête: %s", headers)
+            
+            response = requests.get(url, headers=headers)
+            _LOGGER.debug("Réponse brute: %s", response.text)
+            
+            if response.status_code != 200:
+                _LOGGER.error("Erreur HTTP %d lors de la requête à l'API: %s", response.status_code, response.text)
+                return None
+            
+            data = response.json()
+            if data.get("code") == 200:
+                _LOGGER.info("Données scene/user/list/V2 récupérées avec succès")
+                return data
+            else:
+                _LOGGER.error("Échec de la requête API: %s", data.get('message', 'Réponse inconnue'))
+                return None
+        except requests.RequestException as e:
+            _LOGGER.error("Erreur lors de la requête à l'API scene/user/list/V2: %s", e)
+            return None
+        except Exception as e:
+            _LOGGER.error("Erreur inattendue lors de la récupération des données scene/user/list/V2: %s", e)
+            return None 
+
+async def websocket_to_mqtt(hass: HomeAssistant, config_entry: ConfigEntry, config: ConfigType) -> None:
+    """Établir une connexion WebSocket et traiter les messages."""
+    try:
+        uri = f"wss://baterway.com/websocket/{config[CONF_DEVICE_ID]}"
+        _LOGGER.info("Connexion WebSocket à %s", uri)
+        
+        async with websockets.connect(uri) as websocket:
+            _LOGGER.info("Connexion WebSocket établie")
+            
+            # Envoyer un message de heartbeat toutes les 30 secondes
+            async def heartbeat():
+                while True:
+                    try:
+                        await websocket.ping()
+                        _LOGGER.debug("Ping WebSocket envoyé")
+                        await asyncio.sleep(30)
+                    except Exception as e:
+                        _LOGGER.error("Erreur lors de l'envoi du ping WebSocket: %s", str(e))
+                        break
+            
+            # Démarrer la tâche de heartbeat
+            heartbeat_task = asyncio.create_task(heartbeat())
+            
+            try:
+                while True:
+                    try:
+                        message = await websocket.recv()
+                        _LOGGER.debug("Message WebSocket reçu: %s", message)
+                        
+                        # Analyser le message JSON
+                        try:
+                            data = json.loads(message)
+                            
+                            # Journaliser les clés du message pour le débogage
+                            if isinstance(data, dict):
+                                _LOGGER.debug("Clés du message WebSocket: %s", list(data.keys()))
+                                
+                                # Vérifier spécifiquement le code modèle dans les données
+                                if "9" in data:
+                                    equip_data = data["9"]
+                                    if isinstance(equip_data, dict) and "equipModelCode" in equip_data:
+                                        _LOGGER.info("Code modèle trouvé dans le message WebSocket: %s", equip_data["equipModelCode"])
+                                
+                                # Vérifier si nous avons des données d'équipement
+                                has_equip_data = False
+                                for key in data.keys():
+                                    if key.startswith("9"):
+                                        has_equip_data = True
+                                        break
+                                
+                                if has_equip_data:
+                                    _LOGGER.info("Message WebSocket contient des données d'équipement")
+                                else:
+                                    _LOGGER.debug("Message WebSocket ne contient pas de données d'équipement")
+                            
+                            # Mettre à jour les capteurs directement avec le message brut
+                            if DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]:
+                                for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                    # Vérifier si c'est le capteur de code modèle
+                                    if hasattr(sensor, '_attr_unique_id') and 'model_code' in sensor._attr_unique_id:
+                                        _LOGGER.info("Mise à jour du capteur de code modèle avec les données WebSocket: %s", data)
+                                    sensor.handle_state_update(data)
+                            else:
+                                _LOGGER.warning("Impossible de trouver les capteurs dans hass.data")
+                                
+                        except json.JSONDecodeError:
+                            _LOGGER.warning("Message WebSocket non-JSON reçu: %s", message)
+                    except websockets.exceptions.ConnectionClosed:
+                        _LOGGER.warning("Connexion WebSocket fermée, tentative de reconnexion...")
+                        break
+                    except Exception as e:
+                        _LOGGER.error("Erreur lors du traitement du message WebSocket: %s", str(e))
+                        import traceback
+                        _LOGGER.error("Traceback: %s", traceback.format_exc())
+                        await asyncio.sleep(5)  # Attendre avant de continuer
+            finally:
+                # Annuler la tâche de heartbeat
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+    
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la connexion WebSocket: %s", str(e))
+        import traceback
+        _LOGGER.error("Traceback: %s", traceback.format_exc())
+        
+    # Attendre avant de réessayer
+    await asyncio.sleep(10)
+    
+    # Réessayer la connexion
+    _LOGGER.info("Tentative de reconnexion WebSocket...")
+    asyncio.create_task(websocket_to_mqtt(hass, config_entry, config)) 
