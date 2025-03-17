@@ -17,7 +17,7 @@ DEFAULT_APP_CODE = "Storcube"
 WS_URI = "ws://baterway.com:9501/equip/info/"
 TOKEN_URL = "http://baterway.com/api/user/app/login"
 FIRMWARE_URL = "http://baterway.com/api/equip/version/need/upgrade"
-OUTPUT_URL = "http://baterway.com/api/scene/user/list/V2"
+OUTPUT_URL = "http://baterway.com/api/scene/user/list/V2?equipId="
 SET_POWER_URL = "http://baterway.com/api/slb/equip/set/power"
 SET_THRESHOLD_URL = "http://baterway.com/api/scene/threshold/set"
 

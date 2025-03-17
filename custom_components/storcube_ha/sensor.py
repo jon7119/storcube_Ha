@@ -67,30 +67,37 @@ async def async_setup_entry(
         # Capteurs de batterie
         StorcubeBatteryLevelSensor(config),
         StorcubeBatteryPowerSensor(config),
-        #StorcubeBatteryThresholdSensor(config),
         StorcubeBatteryTemperatureSensor(config),
-        StorcubeBatteryCapacitySensor(config),
-        #StorcubeBatteryHealthSensor(config),
+        StorcubeBatteryCapacityWhSensor(config),
         StorcubeBatteryStatusSensor(config),
         
         # Capteurs solaires
-        StorcubeSolarPowerSensor(config),  # Gardé
-        StorcubeSolarEnergySensor(config),  # Réactivé pour le dashboard Énergie
+        StorcubeSolarPowerSensor(config),
+        StorcubeSolarEnergySensor(config),
         
         # Capteurs solaires pour le deuxième panneau
-        StorcubeSolarPowerSensor2(config),  # Gardé
-        StorcubeSolarEnergySensor2(config),  # Réactivé pour le dashboard Énergie
+        StorcubeSolarPowerSensor2(config),
+        StorcubeSolarEnergySensor2(config),
         
         # Capteur d'énergie solaire totale
-        StorcubeSolarEnergyTotalSensor(config),  # Gardé
+        StorcubeSolarEnergyTotalSensor(config),
         
         # Capteurs de sortie
         StorcubeOutputPowerSensor(config),
-        StorcubeOutputEnergySensor(config),  # Ajouté pour le dashboard Énergie
+        StorcubeOutputEnergySensor(config),
         
         # Capteurs système
         StorcubeStatusSensor(config),
-        #StorcubeFirmwareVersionSensor(config),
+        StorcubeModelSensor(config),
+        StorcubeSerialNumberSensor(config),
+        
+        # Capteurs d'état
+        StorcubeOutputTypeSensor(config),
+        StorcubeReservedSensor(config),
+        StorcubeWorkStatusSensor(config),
+        StorcubeOnlineSensor(config),
+        StorcubeErrorCodeSensor(config),
+        StorcubeOperatingModeSensor(config),
     ]
 
     async_add_entities(sensors)
@@ -103,8 +110,9 @@ async def async_setup_entry(
     # Créer la vue Lovelace
     await create_lovelace_view(hass, config_entry)
 
-    # Start websocket connection
+    # Start websocket connection and output API connection
     asyncio.create_task(websocket_to_mqtt(hass, config, config_entry))
+    asyncio.create_task(output_api_to_mqtt(hass, config, config_entry))
 
 async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     """Create the Lovelace view for Storcube."""
@@ -149,14 +157,14 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
                     },
                     {
                         "type": "gauge",
-                        "entity": f"sensor.{device_id}_battery_health",
-                        "name": "Santé Batterie",
+                        "entity": f"sensor.{device_id}_reserved",
+                        "name": "Niveau Réserve",
                         "min": 0,
                         "max": 100,
                         "severity": {
-                            "green": 80,
-                            "yellow": 60,
-                            "red": 40
+                            "green": 50,
+                            "yellow": 25,
+                            "red": 10
                         }
                     }
                 ]
@@ -193,17 +201,29 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
                 "columns": 2,
                 "cards": [
                     {
+                        "type": "entities",
+                        "title": "État du système",
+                        "entities": [
+                            {
+                                "entity": f"sensor.{device_id}_work_status",
+                                "name": "État"
+                            },
+                            {
+                                "entity": f"sensor.{device_id}_online_status",
+                                "name": "Connexion"
+                            },
+                            {
+                                "entity": f"sensor.{device_id}_output_type",
+                                "name": "Mode de sortie"
+                            }
+                        ]
+                    },
+                    {
                         "type": "sensor",
                         "entity": f"sensor.{device_id}_battery_temperature",
                         "name": "Température",
                         "icon": "mdi:thermometer",
                         "graph": "line"
-                    },
-                    {
-                        "type": "entity",
-                        "entity": f"sensor.{device_id}_battery_status",
-                        "name": "État",
-                        "icon": "mdi:battery-check"
                     }
                 ]
             },
@@ -248,82 +268,99 @@ class StorcubeBatterySensor(SensorEntity):
     """Capteur pour les données de la batterie solaire."""
 
     def __init__(self, config: ConfigType) -> None:
-        """Initialiser le capteur."""
-        self._attr_name = f"Batterie {config['equipId']}"
-        self._attr_native_unit_of_measurement = PERCENTAGE
-        self._attr_device_class = SensorDeviceClass.BATTERY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_unique_id = f"{config['equipId']}_battery"
+        """Initialize the sensor."""
+        self._config = config
+        self._websocket_data = {}
+        self._rest_data = {}
         self._attr_native_value = None
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Gérer la mise à jour de l'état."""
-        # Extraire les données pertinentes du payload
-        self._attr_state = payload['list'][0]['invPower']  # Puissance de l'inverseur
-        self._attr_extra_state_attributes = {
-            "totalPv1power": payload['totalPv1power'],  # Puissance totale PV1
-            "totalInvPower": payload['totalInvPower'],  # Puissance totale de l'inverseur
-            "temp": payload['list'][0]['temp'],  # Température
-            "pv1power": payload['list'][0]['pv1power'],  # Puissance PV1
-            "soc": payload['list'][0]['soc'],  # État de charge
-            "pv2power": payload['list'][0]['pv2power'],  # Puissance PV2
-            "capacity": payload['list'][0]['capacity'],  # Capacité
-            "isWork": payload['list'][0]['isWork'],  # État de fonctionnement
-            "plugPower": payload['plugPower'],  # Puissance de la prise
-            "totalCapacity": payload['totalCapacity'],  # Capacité totale
-            "mainEquipId": payload['mainEquipId'],  # ID de l'équipement principal
-            "totalPv2power": payload['totalPv2power'],  # Puissance totale PV2
-        }
-        self.async_write_ha_state()
+        """Gérer la mise à jour de l'état depuis les différentes sources."""
+        try:
+            if "websocket_data" in payload:
+                self._websocket_data = payload["websocket_data"]
+                self._update_value_from_sources()
+            elif "rest_data" in payload:
+                rest_data = payload["rest_data"]
+                # Créer une structure compatible avec le format WebSocket
+                websocket_format = {
+                    "list": [{
+                        "outputType": rest_data.get("outputType"),
+                        "equipId": rest_data.get("equipId"),
+                        "reserved": rest_data.get("reserved"),
+                        "outputPower": rest_data.get("outputPower"),
+                        "workStatus": rest_data.get("workStatus"),
+                        "rgOnline": rest_data.get("fgOnline"),
+                        "mainEquipOnline": rest_data.get("mainEquipOnline"),
+                        "equipModelCode": rest_data.get("equipModelCode"),
+                        "version": rest_data.get("version", ""),
+                        "isWork": 1 if rest_data.get("workStatus") == 1 else 0,
+                        "errorCode": rest_data.get("errorCode", 0),
+                        "operatingMode": rest_data.get("operatingMode", 0)
+                    }]
+                }
+                self._websocket_data = websocket_format
+                self._update_value_from_sources()
+            elif isinstance(payload, dict) and ("list" in payload or "totalPv1power" in payload):
+                self._websocket_data = payload
+                self._update_value_from_sources()
+            else:
+                _LOGGER.debug("Format de données non reconnu: %s", payload)
+        except Exception as e:
+            _LOGGER.error("Erreur lors de la mise à jour du capteur %s: %s", self.name, str(e))
 
-class StorcubeBatteryLevelSensor(SensorEntity):
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur en fonction des sources disponibles."""
+        # À implémenter dans les classes enfants
+        pass
+
+class StorcubeBatteryLevelSensor(StorcubeBatterySensor):
     """Représentation du niveau de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialiser le capteur."""
+        super().__init__(config)
         self._attr_name = "Niveau Batterie Storcube"
         self._attr_native_unit_of_measurement = "%"
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_level"
-        self._config = config
-        self._attr_native_value = None
-        self._attr_icon = "mdi:battery-high"  # Icône
+        self._attr_icon = "mdi:battery-high"
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Gérer la mise à jour de l'état."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            self._attr_native_value = payload['list'][0]['soc']  # État de charge
-            self.async_write_ha_state()
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "soc" in equip:
+                    self._attr_native_value = equip["soc"]
+                    self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery level: %s", e)
 
-class StorcubeBatteryPowerSensor(SensorEntity):
+class StorcubeBatteryPowerSensor(StorcubeBatterySensor):
     """Représentation de la puissance de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Puissance Batterie Storcube"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_power"
-        self._config = config
-        self._attr_native_value = None
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                self._attr_native_value = equip.get("invPower")
-                self.async_write_ha_state()
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "invPower" in equip:
+                    self._attr_native_value = equip["invPower"]
+                    self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery power: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
 class StorcubeBatteryThresholdSensor(SensorEntity):
     """Représentation du seuil de la batterie."""
@@ -350,7 +387,7 @@ class StorcubeBatteryThresholdSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating battery threshold: %s", e)
 
-class StorcubeBatteryTemperatureSensor(SensorEntity):
+class StorcubeBatteryTemperatureSensor(StorcubeBatterySensor):
     """Représentation de la température de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
@@ -397,29 +434,30 @@ class StorcubeBatteryEnergySensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating battery energy: %s", e)
 
-class StorcubeBatteryCapacitySensor(SensorEntity):
-    """Représentation de la capacité de la batterie."""
+class StorcubeBatteryCapacityWhSensor(SensorEntity):
+    """Représentation de la capacité de la batterie en Wh."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialiser le capteur."""
-        self._attr_name = "Capacité Batterie Storcube"
-        self._attr_native_unit_of_measurement = "Wh"  # Unité de mesure
-        self._attr_device_class = SensorDeviceClass.BATTERY  # Classe d'entité pour la batterie
-        self._attr_state_class = SensorStateClass.MEASUREMENT  # Classe d'état
-        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_capacity"
+        self._attr_name = "Capacité Batterie Storcube (Wh)"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_capacity_wh"
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:battery-charging"
-
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Gérer la mise à jour de l'état."""
         try:
-            self._attr_native_value = payload['list'][0]['capacity']  # Capacité de la batterie
-            self.async_write_ha_state()
+            if isinstance(payload, dict) and "list" in payload and payload["list"]:
+                equip = payload["list"][0]
+                self._attr_native_value = float(equip.get("capacity", 0))
+                self.async_write_ha_state()
         except Exception as e:
-            _LOGGER.error("Error updating battery capacity: %s", e)
+            _LOGGER.error("Error updating battery capacity (Wh): %s", e)
 
 class StorcubeBatteryHealthSensor(SensorEntity):
     """Représentation de la santé de la batterie."""
@@ -491,385 +529,544 @@ class StorcubeBatteryStatusSensor(SensorEntity):
             _LOGGER.error("Error updating battery status: %s", e)
             _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeSolarPowerSensor(SensorEntity):
+class StorcubeSolarPowerSensor(StorcubeBatterySensor):
     """Représentation de la puissance solaire."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Puissance Solaire Storcube"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power"
-        self._config = config
-        self._attr_native_value = None
         self._attr_icon = "mdi:solar-power"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 1
         self._attr_has_entity_name = True
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                self._attr_native_value = equip.get("pv1power")
-                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+            if self._websocket_data:
+                if "totalPv1power" in self._websocket_data:
+                    self._attr_native_value = self._websocket_data["totalPv1power"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    if "pv1power" in equip:
+                        self._attr_native_value = equip["pv1power"]
+                
+                # Ajouter des attributs pour le dashboard Énergie
                 self._attr_extra_state_attributes = {
                     "last_reset": None,
-                    "is_solar_production": True  # Attribut personnalisé pour identifier cette entité comme production solaire
+                    "is_solar_production": True
                 }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeSolarEnergySensor(SensorEntity):
+class StorcubeSolarEnergySensor(StorcubeBatterySensor):
     """Représentation de l'énergie solaire produite."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Énergie Solaire Storcube"
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy"
-        self._config = config
-        self._attr_native_value = 0
         self._attr_icon = "mdi:solar-power"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 2
         self._last_power = 0
         self._last_update_time = None
-        _LOGGER.debug("Capteur d'énergie solaire initialisé avec valeur: %s", self._attr_native_value)
+        self._attr_native_value = 0
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            _LOGGER.debug("Mise à jour du capteur d'énergie solaire avec payload: %s", payload)
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                # Calculer l'énergie à partir de la puissance
-                current_power = equip.get("pv1power", 0)
-                _LOGGER.debug("Puissance solaire actuelle: %s W", current_power)
+            if self._websocket_data:
+                current_power = 0
+                if "totalPv1power" in self._websocket_data:
+                    current_power = self._websocket_data["totalPv1power"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    current_power = equip.get("pv1power", 0)
+
                 current_time = datetime.now()
                 
-                # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None:
-                    # Calculer le temps écoulé en heures
+                if self._last_update_time is not None and current_power > 0:
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
-                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
-                    
-                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
-                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
                     
-                    # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
-                    
-                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
-                else:
-                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
-                # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power = current_power
                 self._last_update_time = current_time
-                
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar energy: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeSolarPowerSensor2(SensorEntity):
+class StorcubeSolarPowerSensor2(StorcubeBatterySensor):
     """Représentation de la puissance solaire du deuxième panneau."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Puissance Solaire 2 Storcube"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_power_2"
-        self._config = config
-        self._attr_native_value = None
         self._attr_icon = "mdi:solar-power"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 1
         self._attr_has_entity_name = True
-        
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                self._attr_native_value = equip.get("pv2power")
-                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+            if self._websocket_data:
+                if "totalPv2power" in self._websocket_data:
+                    self._attr_native_value = self._websocket_data["totalPv2power"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    if "pv2power" in equip:
+                        self._attr_native_value = equip["pv2power"]
+                
+                # Ajouter des attributs pour le dashboard Énergie
                 self._attr_extra_state_attributes = {
                     "last_reset": None,
-                    "is_solar_production": True  # Attribut personnalisé pour identifier cette entité comme production solaire
+                    "is_solar_production": True
                 }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar power 2: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeSolarEnergySensor2(SensorEntity):
+class StorcubeSolarEnergySensor2(StorcubeBatterySensor):
     """Représentation de l'énergie solaire produite par le deuxième panneau."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Énergie Solaire 2 Storcube"
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_2"
-        self._config = config
-        self._attr_native_value = 0
         self._attr_icon = "mdi:solar-power"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 2
         self._last_power = 0
         self._last_update_time = None
+        self._attr_native_value = 0
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                # Calculer l'énergie à partir de la puissance
-                current_power = equip.get("pv2power", 0)
+            if self._websocket_data:
+                current_power = 0
+                if "totalPv2power" in self._websocket_data:
+                    current_power = self._websocket_data["totalPv2power"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    current_power = equip.get("pv2power", 0)
+
                 current_time = datetime.now()
                 
-                # Si nous avons une mesure précédente, calculer l'énergie
                 if self._last_update_time is not None and current_power > 0:
-                    # Calculer le temps écoulé en heures
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
-                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
-                    # Ajouter à la valeur totale
+                    
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
                 
-                # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power = current_power
                 self._last_update_time = current_time
-                
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating solar energy 2: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeOutputPowerSensor(SensorEntity):
+class StorcubeOutputPowerSensor(StorcubeBatterySensor):
     """Représentation de la puissance de sortie."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Puissance Sortie Storcube"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_power"
-        self._config = config
-        self._attr_native_value = None
         self._attr_icon = "mdi:flash"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 1
         self._attr_has_entity_name = True
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict):
-                self._attr_native_value = payload.get("totalInvPower")
-                # Ajouter des attributs supplémentaires pour le dashboard Énergie
+            if self._websocket_data:
+                if "totalInvPower" in self._websocket_data:
+                    self._attr_native_value = self._websocket_data["totalInvPower"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    if "invPower" in equip:
+                        self._attr_native_value = equip["invPower"]
+                
+                # Ajouter des attributs pour le dashboard Énergie
                 self._attr_extra_state_attributes = {
-                    "last_reset": None,  # Important pour les compteurs d'énergie
-                    "is_battery_output": True  # Attribut personnalisé pour identifier cette entité comme sortie de batterie
+                    "last_reset": None,
+                    "is_battery_output": True
                 }
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output power: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeOutputEnergySensor(SensorEntity):
+class StorcubeOutputEnergySensor(StorcubeBatterySensor):
     """Représentation de l'énergie de sortie cumulée."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Énergie Sortie Storcube"
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_energy"
-        self._config = config
-        self._attr_native_value = 0
         self._attr_icon = "mdi:lightning-bolt"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 2
         self._last_power = 0
         self._last_update_time = None
-        _LOGGER.debug("Capteur d'énergie de sortie initialisé avec valeur: %s", self._attr_native_value)
+        self._attr_native_value = 0
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            _LOGGER.debug("Mise à jour du capteur d'énergie de sortie avec payload: %s", payload)
-            if isinstance(payload, dict):
-                # Calculer l'énergie à partir de la puissance
-                # Note: Ceci est une estimation simplifiée, idéalement l'appareil devrait fournir cette valeur
-                current_power = payload.get("totalInvPower", 0)
-                _LOGGER.debug("Puissance de sortie actuelle: %s W", current_power)
+            if self._websocket_data:
+                current_power = 0
+                if "totalInvPower" in self._websocket_data:
+                    current_power = self._websocket_data["totalInvPower"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    current_power = equip.get("invPower", 0)
+
                 current_time = datetime.now()
                 
-                # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None:
-                    # Calculer le temps écoulé en heures
+                if self._last_update_time is not None and current_power > 0:
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
-                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
-                    
-                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((self._last_power + current_power) / 2) * time_diff / 1000
-                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
                     
-                    # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
-                    
-                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
-                else:
-                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
-                # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power = current_power
                 self._last_update_time = current_time
-                
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating output energy: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeStatusSensor(SensorEntity):
+class StorcubeStatusSensor(StorcubeBatterySensor):
     """Représentation de l'état du système."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "État Système Storcube"
         self._attr_device_class = None
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_status"
-        self._config = config
-        self._attr_native_value = None
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
                 self._attr_native_value = "En marche" if equip.get("isWork") == 1 else "Arrêté"
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating status: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
-class StorcubeFirmwareVersionSensor(SensorEntity):
+class StorcubeModelSensor(StorcubeBatterySensor):
+    """Représentation du modèle de l'équipement."""
+    
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "Modèle"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_model"
+        self._attr_icon = "mdi:information"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "equipModelCode" in equip:
+                    self._attr_native_value = equip["equipModelCode"]
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating model: %s", e)
+
+class StorcubeSerialNumberSensor(StorcubeBatterySensor):
+    """Représentation du numéro de série."""
+    
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "Numéro de série"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_serial_number"
+        self._attr_icon = "mdi:barcode"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "equipId" in equip:
+                    self._attr_native_value = equip["equipId"]
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating serial number: %s", e)
+
+class StorcubeOutputTypeSensor(StorcubeBatterySensor):
+    """Représentation du type de sortie."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialiser le capteur."""
+        super().__init__(config)
+        self._attr_name = "Type de sortie"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_output_type"
+        self._attr_icon = "mdi:power-plug"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "outputType" in equip:
+                    output_type = equip["outputType"]
+                    # Gérer le cas où output_type est une chaîne de caractères
+                    if isinstance(output_type, str):
+                        type_map = {
+                            "manual": "Manuel",
+                            "auto": "Automatique",
+                            "eco": "Économique"
+                        }
+                        self._attr_native_value = type_map.get(output_type.lower(), output_type)
+                    else:
+                        # Gérer le cas où output_type est un nombre
+                        type_map = {
+                            0: "Normal",
+                            1: "Économique",
+                            2: "Performance"
+                        }
+                        self._attr_native_value = type_map.get(output_type, f"Mode {output_type}")
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating output type: %s", e)
+
+class StorcubeReservedSensor(StorcubeBatterySensor):
+    """Capteur pour le niveau de réserve."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "Niveau de réserve"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_reserved"
+        self._attr_native_value = None
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_icon = "mdi:battery-charging-medium"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "reserved" in equip:
+                    self._attr_native_value = equip["reserved"]
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating reserved level: %s", e)
+
+class StorcubeWorkStatusSensor(StorcubeBatterySensor):
+    """Représentation de l'état de fonctionnement."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "État de fonctionnement"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_work_status"
+        self._attr_icon = "mdi:power"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                work_status = equip.get("workStatus")
+                
+                status_map = {
+                    0: "Arrêté",
+                    1: "En fonctionnement",
+                    2: "En erreur"
+                }
+                
+                self._attr_native_value = status_map.get(work_status, "Inconnu")
+                self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating work status: %s", e)
+
+class StorcubeOnlineSensor(StorcubeBatterySensor):
+    """Représentation de l'état de connexion."""
+
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "État de connexion"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_online_status"
+        self._attr_icon = "mdi:wifi"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                rg_online = equip.get("rgOnline")
+                main_equip_online = equip.get("mainEquipOnline")
+                
+                if rg_online == 1 and main_equip_online == 1:
+                    self._attr_native_value = "En ligne"
+                else:
+                    self._attr_native_value = "Hors ligne"
+                self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating online status: %s", e)
+
+class StorcubeErrorCodeSensor(StorcubeBatterySensor):
+    """Représentation du code d'erreur."""
+    
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "Code d'erreur"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_error_code"
+        self._attr_icon = "mdi:alert-circle"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "errorCode" in equip:
+                    self._attr_native_value = equip["errorCode"]
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating error code: %s", e)
+
+class StorcubeOperatingModeSensor(StorcubeBatterySensor):
+    """Représentation du mode de fonctionnement."""
+    
+    def __init__(self, config: ConfigType) -> None:
+        """Initialize the sensor."""
+        super().__init__(config)
+        self._attr_name = "Mode de fonctionnement"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_operating_mode"
+        self._attr_icon = "mdi:cog"
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
+        try:
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "operatingMode" in equip:
+                    mode = equip["operatingMode"]
+                    mode_map = {
+                        0: "Normal",
+                        1: "Économie",
+                        2: "Boost",
+                        3: "Veille"
+                    }
+                    self._attr_native_value = mode_map.get(mode, f"Mode {mode}")
+                    self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error("Error updating operating mode: %s", e)
+
+class StorcubeFirmwareVersionSensor(StorcubeBatterySensor):
     """Représentation de la version du firmware."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Version Firmware Storcube"
         self._attr_device_class = None
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_firmware"
-        self._config = config
-        self._attr_native_value = None
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            self._attr_native_value = payload.get("firmware_version")
-            self.async_write_ha_state()
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "version" in equip:
+                    self._attr_native_value = equip["version"]
+                    self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating firmware version: %s", e)
 
-class StorcubeSolarEnergyTotalSensor(SensorEntity):
+class StorcubeSolarEnergyTotalSensor(StorcubeBatterySensor):
     """Représentation de l'énergie solaire totale des deux panneaux."""
-
+    
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Énergie Solaire Totale Storcube"
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR  # Changé en kWh pour être cohérent avec les autres capteurs
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_solar_energy_total"
-        self._config = config
-        self._attr_native_value = 0  # Initialisé à 0 au lieu de None
         self._attr_icon = "mdi:solar-power"
-        # Attributs pour le dashboard Énergie
         self._attr_suggested_display_precision = 2
         self._last_power_pv1 = 0
         self._last_power_pv2 = 0
         self._last_update_time = None
-        _LOGGER.debug("Capteur d'énergie solaire totale initialisé avec valeur: %s", self._attr_native_value)
+        self._attr_native_value = 0
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            _LOGGER.debug("Mise à jour du capteur d'énergie solaire totale avec payload: %s", payload)
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
+            if self._websocket_data:
+                current_power_pv1 = 0
+                current_power_pv2 = 0
                 
-                # Récupérer les puissances actuelles des deux panneaux
-                current_power_pv1 = equip.get("pv1power", 0)
-                current_power_pv2 = equip.get("pv2power", 0)
-                _LOGGER.debug("Puissances actuelles: PV1=%sW, PV2=%sW", current_power_pv1, current_power_pv2)
-                current_time = datetime.now()
-                
-                # Calculer la puissance totale
+                if "totalPv1power" in self._websocket_data and "totalPv2power" in self._websocket_data:
+                    current_power_pv1 = self._websocket_data["totalPv1power"]
+                    current_power_pv2 = self._websocket_data["totalPv2power"]
+                elif "list" in self._websocket_data and self._websocket_data["list"]:
+                    equip = self._websocket_data["list"][0]
+                    current_power_pv1 = equip.get("pv1power", 0)
+                    current_power_pv2 = equip.get("pv2power", 0)
+
                 total_current_power = current_power_pv1 + current_power_pv2
                 total_last_power = self._last_power_pv1 + self._last_power_pv2
-                _LOGGER.debug("Puissance totale actuelle: %sW, Puissance totale précédente: %sW", 
-                             total_current_power, total_last_power)
+                current_time = datetime.now()
                 
-                # Si nous avons une mesure précédente, calculer l'énergie
-                if self._last_update_time is not None:
-                    # Calculer le temps écoulé en heures
+                if self._last_update_time is not None and total_current_power > 0:
                     time_diff = (current_time - self._last_update_time).total_seconds() / 3600
-                    _LOGGER.debug("Temps écoulé depuis dernière mise à jour: %s heures", time_diff)
-                    
-                    # Calculer l'énergie en kWh (moyenne des puissances * temps)
                     energy_increment = ((total_last_power + total_current_power) / 2) * time_diff / 1000
-                    _LOGGER.debug("Incrément d'énergie calculé: %s kWh", energy_increment)
                     
-                    # Ajouter à la valeur totale
                     if self._attr_native_value is None:
                         self._attr_native_value = energy_increment
                     else:
                         self._attr_native_value += energy_increment
-                    
-                    _LOGGER.debug("Nouvelle valeur d'énergie totale: %s kWh", self._attr_native_value)
-                else:
-                    _LOGGER.debug("Première mise à jour, initialisation du temps de référence")
                 
-                # Mettre à jour les valeurs pour le prochain calcul
                 self._last_power_pv1 = current_power_pv1
                 self._last_power_pv2 = current_power_pv2
                 self._last_update_time = current_time
                 
-                # Ajouter des attributs supplémentaires pour le dashboard Énergie
                 self._attr_extra_state_attributes = {
                     "last_reset": None,
                     "is_solar_production": True,
@@ -881,7 +1078,6 @@ class StorcubeSolarEnergyTotalSensor(SensorEntity):
                 self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating total solar energy: %s", e)
-            _LOGGER.debug("Payload reçu: %s", payload)
 
 async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entry: ConfigEntry) -> None:
     """Handle websocket connection and forward data to MQTT."""
@@ -969,16 +1165,38 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entr
                                                 # Log toutes les clés du message
                                                 _LOGGER.debug("Structure du message reçu: %s", json_data)
                                                 
-                                                # Extraire les données d'équipement
-                                                equip_data = next(iter(json_data.values()), {})
-                                                
-                                                # Vérifier si les données d'équipement sont valides
-                                                if equip_data and isinstance(equip_data, dict) and "list" in equip_data:
-                                                    _LOGGER.info("Mise à jour des capteurs avec les données: %s", equip_data)
+                                                # Vérifier si c'est une réponse d'API REST
+                                                if "code" in json_data and "data" in json_data and json_data["code"] == 200:
+                                                    data_list = json_data.get("data", [])
+                                                    if data_list and isinstance(data_list, list):
+                                                        equip_data = data_list[0]
+                                                        _LOGGER.info("Mise à jour des capteurs avec les données de l'API: %s", equip_data)
+                                                        for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                            sensor.handle_state_update(equip_data)
+                                                # Vérifier si c'est une réponse WebSocket avec l'ID de l'équipement
+                                                elif config[CONF_DEVICE_ID] in json_data:
+                                                    equip_data = json_data[config[CONF_DEVICE_ID]]
+                                                    _LOGGER.info("Mise à jour des capteurs avec les données WebSocket: %s", equip_data)
                                                     for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
                                                         sensor.handle_state_update(equip_data)
                                                 else:
-                                                    _LOGGER.debug("Message reçu sans données d'équipement valides")
+                                                    # Extraire les données d'équipement pour le format WebSocket
+                                                    equip_data = next(iter(json_data.values()), {})
+                                                    
+                                                    # Vérifier si les données d'équipement sont valides
+                                                    if equip_data and isinstance(equip_data, dict):
+                                                        # Si les données sont dans la liste
+                                                        if "list" in equip_data and equip_data["list"]:
+                                                            _LOGGER.info("Mise à jour des capteurs avec les données de la liste: %s", equip_data)
+                                                            for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                                sensor.handle_state_update(equip_data)
+                                                        # Si les données sont au niveau racine
+                                                        else:
+                                                            _LOGGER.info("Mise à jour des capteurs avec les données racines: %s", equip_data)
+                                                            for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                                sensor.handle_state_update(equip_data)
+                                                    else:
+                                                        _LOGGER.debug("Message reçu sans données d'équipement valides")
                                             else:
                                                 _LOGGER.debug("Message reçu dans un format inattendu: %s", type(json_data))
                                         except json.JSONDecodeError as e:
@@ -995,6 +1213,86 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entr
                                         _LOGGER.warning("Échec de l'envoi du heartbeat: %s", str(e))
                                         break
                                     continue
+
+            except Exception as e:
+                _LOGGER.error("Erreur inattendue: %s", str(e))
+                await asyncio.sleep(5)
+                continue
+
+        except Exception as e:
+            _LOGGER.error("Erreur de connexion: %s", str(e))
+            await asyncio.sleep(5)
+
+async def output_api_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entry: ConfigEntry) -> None:
+    """Handle output API connection and forward data to MQTT."""
+    while True:
+        try:
+            headers = {
+                'Content-Type': 'application/json',
+                'accept-language': 'fr-FR',
+                'user-agent': 'Mozilla/5.0 (Linux; Android 11; SM-A202F Build/RP1A.200720.012; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/132.0.6834.163 Mobile Safari/537.36 uni-app Html5Plus/1.0 (Immersed/24.0)'
+            }
+            
+            payload = {
+                "appCode": config[CONF_APP_CODE],
+                "loginName": config[CONF_LOGIN_NAME],
+                "password": config[CONF_AUTH_PASSWORD]
+            }
+
+            _LOGGER.debug("Tentative de connexion à %s", TOKEN_URL)
+            try:
+                connector = aiohttp.TCPConnector(ssl=False)
+                timeout = aiohttp.ClientTimeout(total=30)
+                
+                async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+                    async with session.post(
+                        TOKEN_URL,
+                        headers=headers,
+                        json=payload
+                    ) as response:
+                        response_text = await response.text()
+                        _LOGGER.debug("Réponse brute: %s", response_text)
+                        
+                        token_data = json.loads(response_text)
+                        if token_data.get("code") != 200:
+                            _LOGGER.error("Échec de l'authentification: %s", token_data.get("message", "Erreur inconnue"))
+                            raise Exception("Échec de l'authentification")
+                        token = token_data["data"]["token"]
+                        _LOGGER.info("Token obtenu avec succès")
+
+                        while True:
+                            try:
+                                # Appel à l'API output avec le token dans les headers
+                                output_url = f"{OUTPUT_URL}{config[CONF_DEVICE_ID]}"
+                                _LOGGER.debug("Appel à l'API output: %s", output_url)
+                                
+                                headers["Authorization"] = token
+                                async with session.get(
+                                    output_url,
+                                    headers=headers
+                                ) as response:
+                                    response_text = await response.text()
+                                    _LOGGER.debug("Réponse API output brute: %s", response_text)
+                                    
+                                    try:
+                                        json_data = json.loads(response_text)
+                                        if json_data.get("code") == 200 and "data" in json_data:
+                                            data_list = json_data.get("data", [])
+                                            if data_list and isinstance(data_list, list):
+                                                equip_data = data_list[0]
+                                                _LOGGER.info("Mise à jour des capteurs avec les données de l'API output: %s", equip_data)
+                                                for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                    sensor.handle_state_update({"rest_data": equip_data})
+                                    except json.JSONDecodeError as e:
+                                        _LOGGER.warning("Impossible de décoder la réponse JSON de l'API output: %s", e)
+                                
+                                # Attendre 30 secondes avant le prochain appel
+                                await asyncio.sleep(30)
+                                
+                            except Exception as e:
+                                _LOGGER.error("Erreur lors de l'appel à l'API output: %s", str(e))
+                                await asyncio.sleep(5)
+                                continue
 
             except Exception as e:
                 _LOGGER.error("Erreur inattendue: %s", str(e))
