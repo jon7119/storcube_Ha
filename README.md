@@ -27,6 +27,8 @@ Cette intégration permet de connecter votre batterie Storcube à Home Assistant
 
 ## Installation
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=storcube_Ha+&repository=https%3A%2F%2Fgithub.com%2Fjon7119%2Fstorcube_Ha)
+
 ### Option 1 : Via HACS (recommandé)
 
 1. **Installation de HACS** (si pas déjà fait) :
