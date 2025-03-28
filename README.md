@@ -104,4 +104,4 @@ Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![Validate with hassfest](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml)
-[![HACS Action](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml) 
+[![HACS Action](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/validate.yaml) 
