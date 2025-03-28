@@ -82,7 +82,7 @@
             "solar_energy_2": {
                 "name": "Solar Energy 2"
             },
-            "solar_energy_total": {
+            "total_solar_energy": {
                 "name": "Total Solar Energy"
             },
             "output_power": {
