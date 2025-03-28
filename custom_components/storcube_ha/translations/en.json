@@ -2,17 +2,13 @@
     "config": {
         "step": {
             "user": {
-                "title": "Storcube Battery Configuration",
-                "description": "Configure your Storcube battery",
+                "title": "Connect to Storcube",
+                "description": "Enter your Storcube device details",
                 "data": {
-                    "host": "MQTT Broker Address",
-                    "port": "MQTT Port",
                     "device_id": "Device ID",
-                    "app_code": "Application Code",
-                    "login_name": "Username",
-                    "auth_password": "Password",
-                    "username": "MQTT Username",
-                    "password": "MQTT Password"
+                    "app_code": "App Code",
+                    "login_name": "Login Name",
+                    "auth_password": "Authentication Password"
                 }
             }
         },
@@ -22,23 +18,14 @@
             "unknown": "Unexpected error"
         },
         "abort": {
-            "already_configured": "This battery is already configured"
+            "already_configured": "Device is already configured"
         }
     },
     "options": {
         "step": {
             "init": {
-                "title": "Storcube Battery Options",
-                "description": "Modify your Storcube battery configuration",
                 "data": {
-                    "host": "MQTT Broker Address",
-                    "port": "MQTT Port",
-                    "device_id": "Device ID",
-                    "app_code": "Application Code",
-                    "login_name": "Username",
-                    "auth_password": "Password",
-                    "username": "MQTT Username",
-                    "password": "MQTT Password"
+                    "scan_interval": "Update interval"
                 }
             }
         },
@@ -87,7 +74,16 @@
                 "name": "Solar Current"
             },
             "solar_energy": {
-                "name": "Solar Energy Produced"
+                "name": "Solar Energy"
+            },
+            "solar_power_2": {
+                "name": "Solar Power 2"
+            },
+            "solar_energy_2": {
+                "name": "Solar Energy 2"
+            },
+            "solar_energy_total": {
+                "name": "Total Solar Energy"
             },
             "output_power": {
                 "name": "Output Power"
@@ -99,7 +95,10 @@
                 "name": "Output Current"
             },
             "output_energy": {
-                "name": "Energy Consumed"
+                "name": "Output Energy"
+            },
+            "output_power_level": {
+                "name": "Output Power Level"
             },
             "status": {
                 "name": "System Status"
@@ -145,7 +144,35 @@
             },
             "totalPv2power": {
                 "name": "Total PV2 Power"
+            },
+            "battery_status": {
+                "name": "Battery Status"
+            },
+            "model": {
+                "name": "Model"
+            },
+            "serial_number": {
+                "name": "Serial Number"
+            },
+            "output_type": {
+                "name": "Output Type"
+            },
+            "reserved": {
+                "name": "Reserve Level"
+            },
+            "work_status": {
+                "name": "Work Status"
+            },
+            "online_status": {
+                "name": "Online Status"
+            },
+            "error_code": {
+                "name": "Error Code"
+            },
+            "operating_mode": {
+                "name": "Operating Mode"
             }
         }
-    }
+    },
+    "title": "Storcube Battery Monitor"
 } 
