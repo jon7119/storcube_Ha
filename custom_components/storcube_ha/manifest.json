@@ -10,5 +10,4 @@
   "version": "1.0.0",
   "config_flow": true,
   "homekit": {},
-  "iot_standards": []
 } 
