@@ -77,7 +77,7 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=10),  # Réduit à 10 secondes
         )
         self.config_entry = config_entry
         self._topics = {
@@ -85,11 +85,10 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             "power": MQTT_TOPIC_POWER,
             "solar": MQTT_TOPIC_SOLAR,
         }
-        # Séparer clairement les données des différentes sources
         self.data = {
-            "websocket": {},  # Données du WebSocket
-            "rest_api": {},   # Données de l'API REST
-            "combined": {     # Données combinées
+            "websocket": {},
+            "rest_api": {},
+            "combined": {
                 "battery_level": 0,
                 "battery_power": 0,
                 "solar_power": 0,
@@ -98,6 +97,11 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             },
             "last_ws_update": None,
             "last_rest_update": None,
+            "connection_status": {
+                "websocket": False,
+                "rest_api": False,
+                "mqtt": False,
+            }
         }
         self.hass = hass
         self.mqtt_client = None
@@ -106,8 +110,11 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         self._auth_token = None
         self._ws_task = None
         self._known_devices = set()
-        self._rest_update_task = None  # Nouvelle tâche pour l'API REST
-        
+        self._rest_update_task = None
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 5
+        self._reconnect_delay = 5  # Délai initial de 5 secondes
+
         _LOGGER.info(
             "Initialisation du coordinateur Storcube avec les paramètres: host=%s, port=%s, username=%s",
             config_entry.data[CONF_HOST],
@@ -328,15 +335,48 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Erreur lors de la configuration: %s", err)
             raise ConfigEntryNotReady from err
 
+    async def _handle_connection_error(self, service_name, error):
+        """Gérer les erreurs de connexion avec tentatives de reconnexion."""
+        self._reconnect_attempts += 1
+        self.data["connection_status"][service_name] = False
+        
+        if self._reconnect_attempts <= self._max_reconnect_attempts:
+            delay = min(self._reconnect_delay * self._reconnect_attempts, 60)  # Max 60 secondes
+            _LOGGER.warning(
+                "Tentative de reconnexion %s/%s pour %s dans %s secondes. Erreur: %s",
+                self._reconnect_attempts,
+                self._max_reconnect_attempts,
+                service_name,
+                delay,
+                str(error)
+            )
+            await asyncio.sleep(delay)
+            if service_name == "websocket":
+                await self._start_websocket()
+            elif service_name == "rest_api":
+                await self._rest_update_loop()
+            elif service_name == "mqtt":
+                await self.async_setup()
+        else:
+            _LOGGER.error(
+                "Échec de reconnexion après %s tentatives pour %s. Erreur: %s",
+                self._max_reconnect_attempts,
+                service_name,
+                str(error)
+            )
+            self._reconnect_attempts = 0  # Réinitialiser pour la prochaine série
+
     async def _rest_update_loop(self):
         """Boucle de mise à jour périodique pour l'API REST."""
         while True:
             try:
                 scene_data = await self.get_scene_data()
                 if scene_data:
+                    self.data["connection_status"]["rest_api"] = True
+                    self._reconnect_attempts = 0  # Réinitialiser si succès
+                    
                     equip_id = scene_data.get("equipId")
                     if equip_id:
-                        # Mettre à jour uniquement les données REST
                         if equip_id not in self.data["rest_api"]:
                             self.data["rest_api"][equip_id] = {}
                         
@@ -354,43 +394,28 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                         
                         self.data["last_rest_update"] = datetime.now().isoformat()
                         
-                        # Mettre à jour les capteurs avec les nouvelles données REST
-                        for sensor in self.hass.data[DOMAIN][self.config_entry.entry_id]["sensors"]:
-                            await self.hass.async_add_executor_job(
-                                sensor.handle_state_update,
-                                {"rest_data": self.data["rest_api"][equip_id]}
-                            )
+                        await self._update_sensors(equip_id)
                         
-                        _LOGGER.info("Données REST mises à jour pour l'équipement %s", equip_id)
+                        _LOGGER.debug("Données REST mises à jour pour l'équipement %s", equip_id)
             except Exception as e:
-                _LOGGER.error("Erreur dans la boucle de mise à jour REST: %s", str(e))
+                await self._handle_connection_error("rest_api", e)
             
-            await asyncio.sleep(30)  # Attendre 30 secondes avant la prochaine mise à jour
+            await asyncio.sleep(10)  # Mise à jour toutes les 10 secondes
 
-    async def _async_update_data(self):
-        """Mettre à jour les données combinées."""
+    async def _update_sensors(self, equip_id):
+        """Mettre à jour les capteurs avec les nouvelles données."""
         try:
-            # Combiner les données des deux sources
-            for equip_id in self._known_devices:
-                if equip_id not in self.data["combined"]:
-                    self.data["combined"][equip_id] = {}
-                
-                # Copier les données WebSocket
-                if equip_id in self.data["websocket"]:
-                    self.data["combined"][equip_id].update(self.data["websocket"][equip_id])
-                
-                # Copier les données REST sans écraser les données WebSocket existantes
-                if equip_id in self.data["rest_api"]:
-                    rest_data = self.data["rest_api"][equip_id]
-                    for key, value in rest_data.items():
-                        if key not in self.data["combined"][equip_id]:
-                            self.data["combined"][equip_id][key] = value
-
-            return self.data["combined"]
-
+            if DOMAIN in self.hass.data and self.config_entry.entry_id in self.hass.data[DOMAIN]:
+                for sensor in self.hass.data[DOMAIN][self.config_entry.entry_id]["sensors"]:
+                    await self.hass.async_add_executor_job(
+                        sensor.handle_state_update,
+                        {
+                            "rest_data": self.data["rest_api"][equip_id],
+                            "connection_status": self.data["connection_status"]
+                        }
+                    )
         except Exception as e:
-            _LOGGER.error("Erreur lors de la mise à jour des données combinées: %s", e)
-            raise UpdateFailed(f"Erreur de mise à jour: {str(e)}")
+            _LOGGER.error("Erreur lors de la mise à jour des capteurs: %s", str(e))
 
     async def async_mqtt_message_received(self, msg):
         """Handle received MQTT message."""
@@ -412,176 +437,88 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         except ValueError:
             _LOGGER.error("Valeur invalide dans le message MQTT: %s", payload)
 
-    async def _websocket_listener(self):
-        """Écouter les données WebSocket et les publier sur MQTT."""
+    async def _start_websocket(self):
+        """Démarrer la connexion WebSocket avec gestion de reconnexion."""
         while True:
             try:
-                _LOGGER.info("Connexion au WebSocket...")
-                headers = {"Authorization": self._auth_token}
-                async with websockets.connect(WS_URI, extra_headers=headers) as websocket:
-                    _LOGGER.info("Connecté au WebSocket")
+                if not self._auth_token:
+                    self._auth_token = await self.get_auth_token()
+                    if not self._auth_token:
+                        raise Exception("Impossible d'obtenir le token d'authentification")
+
+                uri = f"{WS_URI}?token={self._auth_token}"
+                _LOGGER.debug("Tentative de connexion WebSocket à %s", uri)
+
+                async with websockets.connect(uri) as websocket:
+                    self.ws = websocket
+                    self.data["connection_status"]["websocket"] = True
+                    self._reconnect_attempts = 0  # Réinitialiser le compteur
+                    _LOGGER.info("Connexion WebSocket établie")
+
                     while True:
                         try:
                             message = await websocket.recv()
-                            data = json.loads(message)
-                            _LOGGER.debug("Données WebSocket reçues: %s", data)
-
-                            if "list" in data:
-                                for battery in data["list"]:
-                                    equip_id = battery.get("equipId")
-                                    if not equip_id:
-                                        continue
-
-                                    # Enregistrer la batterie si elle est nouvelle
-                                    self._register_device(equip_id, battery)
-                                    
-                                    # Obtenir les topics pour cette batterie
-                                    topics = self._get_mqtt_topics(equip_id)
-                                    
-                                    # Publier les données sur MQTT
-                                    if self.mqtt_client and self.mqtt_client.is_connected():
-                                        # Status
-                                        self.mqtt_client.publish(topics["status"], json.dumps({
-                                            "value": battery.get("fgOnline", 0)
-                                        }))
-                                        
-                                        # Power
-                                        self.mqtt_client.publish(topics["power"], json.dumps({
-                                            "value": battery.get("power", 0)
-                                        }))
-                                        
-                                        # Solar
-                                        self.mqtt_client.publish(topics["solar"], json.dumps({
-                                            "value": battery.get("solarPower", 0)
-                                        }))
-                                        
-                                        # Capacity
-                                        self.mqtt_client.publish(topics["capacity"], json.dumps({
-                                            "value": battery.get("soc", 0)
-                                        }))
-                                        
-                                        # Output
-                                        self.mqtt_client.publish(topics["output"], json.dumps(battery))
-                                        
-                                        # Report (données complètes pour cette batterie)
-                                        battery_report = {"list": [battery]}
-                                        self.mqtt_client.publish(topics["report"], json.dumps(battery_report))
-                                        
-                                        # Mettre à jour les données dans le coordinateur
-                                        self.data["websocket"][equip_id] = {
-                                            "battery_status": json.dumps({"value": battery.get("fgOnline", 0)}),
-                                            "battery_power": json.dumps({"value": battery.get("power", 0)}),
-                                            "battery_solar": json.dumps({"value": battery.get("solarPower", 0)}),
-                                            "battery_capacity": json.dumps({"value": battery.get("soc", 0)}),
-                                            "battery_output": json.dumps(battery),
-                                            "battery_report": json.dumps(battery_report),
-                                        }
-                                    
-                                    _LOGGER.debug("Données publiées pour la batterie %s", equip_id)
-                                
-                                # Mettre à jour toutes les entités
-                                self.async_set_updated_data(self.data)
-
-                        except json.JSONDecodeError as e:
-                            _LOGGER.error("Erreur de décodage JSON: %s", e)
+                            await self._handle_ws_message(message)
+                        except websockets.ConnectionClosed:
+                            _LOGGER.warning("Connexion WebSocket fermée, tentative de reconnexion...")
+                            break
                         except Exception as e:
-                            _LOGGER.error("Erreur lors du traitement des données WebSocket: %s", e)
+                            _LOGGER.error("Erreur lors de la réception du message WebSocket: %s", str(e))
                             break
 
-            except websockets.exceptions.ConnectionClosed:
-                _LOGGER.warning("Connexion WebSocket fermée, tentative de reconnexion...")
             except Exception as e:
-                _LOGGER.error("Erreur WebSocket: %s", e)
+                await self._handle_connection_error("websocket", e)
+                if self._reconnect_attempts >= self._max_reconnect_attempts:
+                    _LOGGER.error("Échec de la connexion WebSocket après %s tentatives", self._max_reconnect_attempts)
+                    break
             
             await asyncio.sleep(5)  # Attendre avant de réessayer
 
-    async def _setup_mqtt(self):
-        """Configurer la connexion MQTT."""
-        if self.mqtt_client:
-            _LOGGER.info("Déconnexion du client MQTT existant")
-            self.mqtt_client.disconnect()
-
-        self.mqtt_client = mqtt.Client(client_id=f"ha-storcube-{self.config_entry.entry_id}")
-        
-        def on_connect(client, userdata, flags, rc):
-            """Callback lors de la connexion."""
-            if rc == 0:
-                _LOGGER.info("Connecté au broker MQTT avec succès")
-                # Les abonnements seront gérés dynamiquement lors de la détection des batteries
-            else:
-                error_msg = MQTT_ERROR_CODES.get(rc, f"Erreur inconnue (code {rc})")
-                self._connection_error = f"Échec de connexion MQTT : {error_msg}"
-                _LOGGER.error(self._connection_error)
-                
-                if rc in [4, 5]:
-                    _LOGGER.error("Vérifiez vos identifiants MQTT (nom d'utilisateur: %s)", 
-                                self.config_entry.data[CONF_USERNAME])
-
-        def on_disconnect(self, client, userdata, rc):
-            """Callback lors de la déconnexion."""
-            if rc != 0:
-                _LOGGER.error("Déconnexion MQTT inattendue avec le code %s", rc)
-                # Implémentez une logique de reconnexion ici
-                asyncio.create_task(self.reconnect_mqtt())
-
-        def on_message(client, userdata, msg):
-            """Callback lors de la réception d'un message."""
-            try:
-                payload = msg.payload.decode()
-                _LOGGER.debug("Message MQTT reçu sur %s: %s", msg.topic, payload)
-                
-                # Extraire l'equipId du topic
-                parts = msg.topic.split('/')
-                if len(parts) >= 2:
-                    equip_id = parts[1]
-                    if equip_id in self.data["websocket"]:
-                        # Déterminer le type de données à partir du topic
-                        data_type = parts[-1]  # Dernier segment du topic
-                        if data_type in ["status", "power", "solar", "capacity", "output", "report"]:
-                            self.data["websocket"][equip_id][f"battery_{data_type}"] = payload
-                            _LOGGER.debug("Données %s mises à jour pour la batterie %s", data_type, equip_id)
-                            self.async_set_updated_data(self.data)
-                
-            except Exception as err:
-                _LOGGER.error("Erreur lors du traitement du message MQTT: %s", err)
-
-        self.mqtt_client.on_connect = on_connect
-        self.mqtt_client.on_disconnect = on_disconnect
-        self.mqtt_client.on_message = on_message
-
-        # Configuration de l'authentification MQTT
+    async def _handle_ws_message(self, message):
+        """Gérer les messages WebSocket reçus."""
         try:
-            _LOGGER.debug("Configuration de l'authentification MQTT")
-            self.mqtt_client.username_pw_set(
-                self.config_entry.data[CONF_USERNAME],
-                self.config_entry.data[CONF_PASSWORD],
-            )
+            data = json.loads(message)
+            equip_id = data.get("equipId")
             
-            _LOGGER.info("Tentative de connexion à %s:%s avec l'utilisateur %s",
-                       self.config_entry.data[CONF_HOST],
-                       self.config_entry.data[CONF_PORT],
-                       self.config_entry.data[CONF_USERNAME])
-            
-            self.mqtt_client.connect(
-                self.config_entry.data[CONF_HOST],
-                self.config_entry.data[CONF_PORT],
-            )
-            self.mqtt_client.loop_start()
-            _LOGGER.info("Boucle MQTT démarrée")
-        except Exception as err:
-            self._connection_error = f"Erreur de connexion MQTT : {str(err)}"
-            _LOGGER.error(self._connection_error)
-            raise ConfigEntryAuthFailed(self._connection_error)
+            if equip_id:
+                if equip_id not in self.data["websocket"]:
+                    self.data["websocket"][equip_id] = {}
+                
+                # Mettre à jour les données WebSocket
+                self.data["websocket"][equip_id].update({
+                    "battery_level": data.get("batteryLevel"),
+                    "battery_power": data.get("batteryPower"),
+                    "solar_power": data.get("solarPower"),
+                    "temperature": data.get("temperature"),
+                    "status": data.get("status"),
+                    "last_update": datetime.now().isoformat()
+                })
+                
+                # Mettre à jour les capteurs
+                await self._update_sensors(equip_id)
+                
+                _LOGGER.debug("Données WebSocket mises à jour pour l'équipement %s", equip_id)
+        except json.JSONDecodeError as e:
+            _LOGGER.error("Erreur de décodage JSON du message WebSocket: %s", str(e))
+        except Exception as e:
+            _LOGGER.error("Erreur lors du traitement du message WebSocket: %s", str(e))
 
-    async def reconnect_mqtt(self):
-        """Reconnecter le client MQTT."""
-        while True:
-            try:
-                await self._setup_mqtt()
-                break  # Sortir de la boucle si la reconnexion réussit
-            except Exception as e:
-                _LOGGER.error("Erreur de reconnexion MQTT: %s", e)
-                await asyncio.sleep(5)  # Attendre avant de réessayer
+    async def async_start(self):
+        """Démarrer toutes les connexions."""
+        try:
+            # Démarrer la connexion WebSocket
+            self._ws_task = asyncio.create_task(self._start_websocket())
+            
+            # Démarrer la mise à jour REST
+            self._rest_update_task = asyncio.create_task(self._rest_update_loop())
+            
+            # Configurer MQTT
+            await self.async_setup()
+            
+            return True
+        except Exception as e:
+            _LOGGER.error("Erreur lors du démarrage des connexions: %s", str(e))
+            return False
 
     async def async_shutdown(self):
         """Arrêter proprement le coordinateur."""
