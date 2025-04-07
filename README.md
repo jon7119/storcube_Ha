@@ -1,4 +1,4 @@
-![](/custom_components/storcube_Ha/res/icon.png)
+![](/custom_components/storcube_ha/res/icon.png)
 
 # Storcube Battery Monitor pour Home Assistant
 
