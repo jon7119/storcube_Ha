@@ -1,3 +1,5 @@
+![](/custom_components/storcube_Ha/res/icon.png)
+
 # Storcube Battery Monitor pour Home Assistant
 
 Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT. Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
