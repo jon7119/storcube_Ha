@@ -2,12 +2,12 @@
 
 # Storcube Battery Monitor pour Home Assistant
 
-Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT. Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
+Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT (fonctionne sans). Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
 
 ## Fonctionnalités
 
 - Récupération des données de la batterie en temps réel via WebSocket
-- Transmission des données via MQTT
+- Transmission des données via MQTT (fonctionne sans)
 - Configuration via l'interface utilisateur de Home Assistant
 - Gestion automatique des reconnexions
 - Capteurs disponibles :
@@ -64,7 +64,7 @@ Après l'installation (via HACS ou manuellement) :
 1. Dans Home Assistant, allez dans Configuration > Intégrations
 2. Cliquez sur le bouton "+" pour ajouter une nouvelle intégration
 3. Recherchez "Storcube Battery Monitor"
-4. Remplissez les informations requises :
+4. Remplissez les informations requises :(si pas de mqtt mettre test (fonctionne sans)
    - Adresse du broker MQTT (ex: 192.168.1.xxx)
    - Port MQTT (par défaut : 1883)
    - Device ID (sur l'étiquette de votre batterie)
@@ -102,6 +102,8 @@ Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
 
 ## Badges
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-[![Validate with hassfest](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml)
-[![HACS Action](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml) 
+[![CodeQL](https://github.com/jon7119/storcube_Ha/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/github-code-scanning/codeql)
+[![HACS](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hacs.yaml)
+[![hassfest](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/hassfest.yaml)
+[![Validate](https://github.com/jon7119/storcube_Ha/actions/workflows/validate.yml/badge.svg)](https://github.com/jon7119/storcube_Ha/actions/workflows/validate.yml)
+
