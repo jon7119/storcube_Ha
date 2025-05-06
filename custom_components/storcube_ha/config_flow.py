@@ -27,10 +27,19 @@ from .const import (
     CONF_AUTH_PASSWORD,
     DEFAULT_PORT,
     DEFAULT_APP_CODE,
+    DEFAULT_LOGIN_NAME,
+    DEFAULT_AUTH_PASSWORD,
     TOKEN_URL,
+    ERROR_MESSAGES,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+class CannotConnect(HomeAssistantError):
+    """Error to indicate we cannot connect."""
+
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid auth."""
 
 class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Storcube Battery Monitor."""
@@ -70,8 +79,8 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
                     vol.Required(CONF_DEVICE_ID): str,
                     vol.Optional(CONF_APP_CODE, default=DEFAULT_APP_CODE): str,
-                    vol.Required(CONF_LOGIN_NAME): str,
-                    vol.Required(CONF_AUTH_PASSWORD): str,
+                    vol.Required(CONF_LOGIN_NAME, default=DEFAULT_LOGIN_NAME): str,
+                    vol.Required(CONF_AUTH_PASSWORD, default=DEFAULT_AUTH_PASSWORD): str,
                     vol.Required(CONF_USERNAME): str,
                     vol.Required(CONF_PASSWORD): str,
                 }
@@ -177,8 +186,8 @@ class StorcubeOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(CONF_PORT, default=current_config.get(CONF_PORT, DEFAULT_PORT)): int,
                     vol.Required(CONF_DEVICE_ID, default=current_config.get(CONF_DEVICE_ID)): str,
                     vol.Optional(CONF_APP_CODE, default=current_config.get(CONF_APP_CODE, DEFAULT_APP_CODE)): str,
-                    vol.Required(CONF_LOGIN_NAME, default=current_config.get(CONF_LOGIN_NAME)): str,
-                    vol.Required(CONF_AUTH_PASSWORD, default=current_config.get(CONF_AUTH_PASSWORD)): str,
+                    vol.Required(CONF_LOGIN_NAME, default=current_config.get(CONF_LOGIN_NAME, DEFAULT_LOGIN_NAME)): str,
+                    vol.Required(CONF_AUTH_PASSWORD, default=current_config.get(CONF_AUTH_PASSWORD, DEFAULT_AUTH_PASSWORD)): str,
                     vol.Required(CONF_USERNAME, default=current_config.get(CONF_USERNAME)): str,
                     vol.Required(CONF_PASSWORD, default=current_config.get(CONF_PASSWORD)): str,
                 }
@@ -213,10 +222,5 @@ class StorcubeOptionsFlowHandler(config_entries.OptionsFlow):
         except aiohttp.ClientError:
             raise CannotConnect
         except Exception as e:
-            raise
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth.""" 
+            _LOGGER.error("Unexpected error: %s", str(e))
+            raise 
