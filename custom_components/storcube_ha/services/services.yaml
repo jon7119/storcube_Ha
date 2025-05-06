@@ -1,0 +1,29 @@
+# Service pour définir la puissance de sortie
+set_power:
+  name: Définir la puissance
+  description: Définit la puissance de sortie de la batterie.
+  fields:
+    power:
+      name: Puissance
+      description: Puissance en watts (W)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 10000
+          unit_of_measurement: W
+
+# Service pour définir le seuil de décharge
+set_threshold:
+  name: Définir le seuil
+  description: Définit le seuil de décharge de la batterie.
+  fields:
+    threshold:
+      name: Seuil
+      description: Seuil en pourcentage (0-100)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%" 
