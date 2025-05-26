@@ -20,7 +20,7 @@ Cette intégration permet de connecter votre batterie Storcube à Home Assistant
 ## Prérequis
 
 - Home Assistant
-- Un broker MQTT configuré et fonctionnel
+- Un broker MQTT configuré et fonctionnel (fonctionne sans)
 - Les informations de connexion à votre batterie Storcube :
   - Device ID (identifiant de votre batterie)
   - App Code (par défaut : Storcube)
@@ -65,7 +65,7 @@ Après l'installation (via HACS ou manuellement) :
 2. Cliquez sur le bouton "+" pour ajouter une nouvelle intégration
 3. Recherchez "Storcube Battery Monitor"
 4. Remplissez les informations requises :(si pas de mqtt mettre test (fonctionne sans)
-   - Adresse du broker MQTT (ex: 192.168.1.xxx)
+   - Adresse du broker MQTT (ex: 192.168.1.xxx)(fonctionne sans)
    - Port MQTT (par défaut : 1883)
    - Device ID (sur l'étiquette de votre batterie)
    - App Code (par défaut : Storcube)
