@@ -31,7 +31,4 @@ TOPIC_OUTPUT_POWER = TOPIC_BASE + "outputPower"
 TOPIC_THRESHOLD = TOPIC_BASE + "set_threshold"
 TOPIC_BATTERY_STATUS = TOPIC_BASE + "status"
 TOPIC_BATTERY_POWER = TOPIC_BASE + "power"
-TOPIC_BATTERY_SOLAR = TOPIC_BASE + "solar"
-
-# MQTT Topic Status (ajouté pour corriger l'erreur d'import)
-MQTT_TOPIC_STATUS = TOPIC_BATTERY_STATUS 
+TOPIC_BATTERY_SOLAR = TOPIC_BASE + "solar" 
