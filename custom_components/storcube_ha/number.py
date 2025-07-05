@@ -223,7 +223,7 @@ class StorcubeThresholdNumber(NumberEntity):
         self._attr_native_max_value = 100.0
         self._attr_native_step = 1.0
         self._attr_mode = NumberMode.SLIDER
-        self._attr_native_value = 20.0  # Valeur par défaut
+        self._attr_native_value = 80.0  # Valeur par défaut
 
     @property
     def available(self) -> bool:
