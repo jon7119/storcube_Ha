@@ -10,8 +10,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, ICON_CONNECTION
-from .coordinator import StorcubeDataUpdateCoordinator
+from .const import DOMAIN
+from .coordinator import StorCubeDataUpdateCoordinator
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -32,9 +32,9 @@ class StorCubeBatteryConnectionSensor(CoordinatorEntity, BinarySensorEntity):
     """Capteur binaire pour l'état de la connexion de la batterie."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-    _attr_icon = ICON_CONNECTION
+    _attr_icon = "mdi:connection"
 
-    def __init__(self, coordinator: StorcubeDataUpdateCoordinator, equip_id: str) -> None:
+    def __init__(self, coordinator: StorCubeDataUpdateCoordinator, equip_id: str) -> None:
         """Initialiser le capteur."""
         super().__init__(coordinator)
         self._equip_id = equip_id
