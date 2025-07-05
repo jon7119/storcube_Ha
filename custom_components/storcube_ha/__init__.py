@@ -32,7 +32,7 @@ from .version import __version__
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.NUMBER]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Storcube Battery Monitor integration."""
@@ -105,7 +105,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         hass.async_create_task(
             hass.config_entries.flow.async_init(
                 DOMAIN,
-                context={"source": config_entries.SOURCE_IMPORT},
+                context={"source": "import"},
                 data=entry,
             )
         )
@@ -115,7 +115,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Storcube Battery Monitor from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
+    
+    # Créer le coordinateur
+    from .coordinator import StorCubeDataUpdateCoordinator
+    coordinator = StorCubeDataUpdateCoordinator(hass, entry)
+    hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -126,7 +130,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         coordinator = hass.data[DOMAIN].get(entry.entry_id)
         if coordinator:
-            await coordinator.async_unsubscribe_mqtt()
+            await coordinator.async_shutdown()
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
@@ -136,8 +140,4 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
 
-async def async_unsubscribe_mqtt(self):
-    """Se désabonner des topics MQTT."""
-    if self.mqtt_client:
-        self.mqtt_client.loop_stop()
-        self.mqtt_client.disconnect() 
+ 

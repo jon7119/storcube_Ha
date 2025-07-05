@@ -146,6 +146,11 @@
             "totalPv2power": {
                 "name": "Total PV2 Power"
             }
+        },
+        "number": {
+            "output_power": {
+                "name": "Output Power"
+            }
         }
     }
 } 
