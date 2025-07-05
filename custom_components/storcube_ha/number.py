@@ -238,12 +238,57 @@ class StorcubeThresholdNumber(NumberEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        # Pas besoin de listener car c'est un contrôle, pas un capteur
+        # Synchroniser la valeur du seuil avec l'API au démarrage
+        await self._update_current_threshold()
 
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity will be removed from hass."""
-        await super().async_will_remove_from_hass()
-        # Pas de nettoyage nécessaire
+    async def _update_current_threshold(self):
+        """Récupérer la valeur actuelle du seuil depuis l'API."""
+        try:
+            token = await self._get_auth_token()
+            if not token:
+                _LOGGER.warning("Impossible de récupérer le token pour la synchronisation initiale")
+                return
+
+            current_value = await self._get_current_threshold(token)
+            if current_value is not None:
+                self._attr_native_value = float(current_value)
+                self.async_write_ha_state()
+                _LOGGER.info(f"Seuil synchronisé avec la valeur actuelle: {current_value}%")
+            else:
+                _LOGGER.warning("Impossible de récupérer la valeur actuelle du seuil")
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la synchronisation du seuil: {e}")
+
+    async def _get_current_threshold(self, token: str) -> int | None:
+        """Récupérer la valeur actuelle du seuil depuis l'API."""
+        import aiohttp
+
+        headers = {
+            "Authorization": token,
+            "Content-Type": "application/json",
+            "appCode": self._app_code
+        }
+        params = {"equipId": self._device_id}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "http://baterway.com/api/scene/threshold/query",
+                    headers=headers,
+                    params=params
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if "data" in data:
+                            return int(data["data"])
+                        else:
+                            _LOGGER.debug(f"Réponse inattendue pour le seuil: {data}")
+                    else:
+                        _LOGGER.debug(f"Erreur HTTP {response.status} lors de la récupération du seuil")
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du seuil actuel: {e}")
+
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the threshold value."""
