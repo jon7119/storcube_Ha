@@ -150,6 +150,9 @@
         "number": {
             "output_power": {
                 "name": "Output Power"
+            },
+            "battery_threshold": {
+                "name": "Battery Threshold"
             }
         }
     }

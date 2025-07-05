@@ -126,6 +126,9 @@
         "number": {
             "output_power": {
                 "name": "Puissance de Sortie"
+            },
+            "battery_threshold": {
+                "name": "Seuil de Batterie"
             }
         }
     }

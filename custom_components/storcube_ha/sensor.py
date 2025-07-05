@@ -70,6 +70,7 @@ async def async_setup_entry(
         StorcubeBatteryTemperatureSensor(config),
         StorcubeBatteryCapacityWhSensor(config),
         StorcubeBatteryStatusSensor(config),
+        StorcubeBatteryThresholdSensor(config),
         
         # Capteurs solaires
         StorcubeSolarPowerSensor(config),
@@ -362,28 +363,27 @@ class StorcubeBatteryPowerSensor(StorcubeBatterySensor):
         except Exception as e:
             _LOGGER.error("Error updating battery power: %s", e)
 
-class StorcubeBatteryThresholdSensor(SensorEntity):
+class StorcubeBatteryThresholdSensor(StorcubeBatterySensor):
     """Représentation du seuil de la batterie."""
 
     def __init__(self, config: ConfigType) -> None:
         """Initialize the sensor."""
+        super().__init__(config)
         self._attr_name = "Seuil Batterie Storcube"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_threshold"
-        self._config = config
-        self._attr_native_value = None
+        self._attr_icon = "mdi:battery-charging-medium"
 
-    @callback
-    def handle_state_update(self, payload: dict[str, Any]) -> None:
-        """Handle state update from MQTT."""
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur depuis les sources disponibles."""
         try:
-            if isinstance(payload, dict) and "list" in payload and payload["list"]:
-                equip = payload["list"][0]
-                # Le seuil est le niveau de batterie minimum (à implémenter si disponible)
-                self._attr_native_value = None
-                self.async_write_ha_state()
+            if self._websocket_data and "list" in self._websocket_data and self._websocket_data["list"]:
+                equip = self._websocket_data["list"][0]
+                if "reserved" in equip:
+                    self._attr_native_value = equip["reserved"]
+                    self.async_write_ha_state()
         except Exception as e:
             _LOGGER.error("Error updating battery threshold: %s", e)
 
