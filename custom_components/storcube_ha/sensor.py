@@ -62,6 +62,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors from a config entry."""
     config = config_entry.data
+    
+    # Récupérer le coordinateur
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     sensors = [
         # Capteurs de batterie
@@ -98,6 +101,9 @@ async def async_setup_entry(
         StorcubeWorkStatusSensor(config),
         StorcubeOnlineSensor(config),
         StorcubeErrorCodeSensor(config),
+        
+        # Capteur de firmware
+        StorcubeFirmwareSensor(config, coordinator),
         StorcubeOperatingModeSensor(config),
     ]
 
@@ -1302,3 +1308,142 @@ async def output_api_to_mqtt(hass: HomeAssistant, config: ConfigType, config_ent
         except Exception as e:
             _LOGGER.error("Erreur de connexion: %s", str(e))
             await asyncio.sleep(5) 
+
+
+class StorcubeFirmwareSensor(StorcubeBatterySensor):
+    """Capteur pour les informations de firmware StorCube."""
+
+    def __init__(self, config: ConfigType, coordinator=None) -> None:
+        """Initialiser le capteur de firmware."""
+        super().__init__(config)
+        self.coordinator = coordinator
+        self._attr_name = "Firmware StorCube"
+        self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_firmware"
+        self._attr_icon = "mdi:update"
+        self._attr_native_unit_of_measurement = None
+        self._attr_device_class = None
+        self._attr_state_class = None
+        self.hass = None  # Sera défini lors de l'ajout à hass
+        self._firmware_data = None  # Stockage des données firmware
+
+    def _update_value_from_sources(self):
+        """Mettre à jour la valeur du capteur."""
+        # Ne pas écraser les données firmware avec les données WebSocket/REST
+        # Les données firmware sont gérées par handle_state_update
+        if hasattr(self, '_firmware_data') and self._firmware_data:
+            current_version = self._firmware_data.get("current_version", "Inconnue")
+            latest_version = self._firmware_data.get("latest_version", "Inconnue")
+            upgrade_available = self._firmware_data.get("upgrade_available", False)
+            
+            if upgrade_available:
+                self._attr_native_value = f"Mise à jour disponible ({latest_version})"
+            else:
+                self._attr_native_value = f"À jour ({current_version})"
+            return
+        
+        # Récupérer les données de firmware depuis le coordinateur
+        if self.hass and DOMAIN in self.hass.data:
+            for entry_id, coordinator in self.hass.data[DOMAIN].items():
+                if hasattr(coordinator, 'data') and 'firmware' in coordinator.data:
+                    firmware_data = coordinator.data['firmware']
+                    current_version = firmware_data.get("current_version", "Inconnue")
+                    latest_version = firmware_data.get("latest_version", "Inconnue")
+                    upgrade_available = firmware_data.get("upgrade_available", False)
+                    
+                    if upgrade_available:
+                        self._attr_native_value = f"Mise à jour disponible ({latest_version})"
+                    else:
+                        self._attr_native_value = f"À jour ({current_version})"
+                    return
+        
+        # Valeur par défaut si pas de données
+        self._attr_native_value = "Inconnue"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Retourner les attributs supplémentaires."""
+        # Utiliser les données stockées si disponibles
+        if hasattr(self, '_firmware_data') and self._firmware_data:
+            return self._firmware_data
+        
+        # Sinon, essayer de récupérer depuis le coordinateur
+        if self.hass and DOMAIN in self.hass.data:
+            for entry_id, coordinator in self.hass.data[DOMAIN].items():
+                if hasattr(coordinator, 'data') and 'firmware' in coordinator.data:
+                    firmware_data = coordinator.data['firmware']
+                    return {
+                        "current_version": firmware_data.get("current_version", "Inconnue"),
+                        "latest_version": firmware_data.get("latest_version", "Inconnue"),
+                        "upgrade_available": firmware_data.get("upgrade_available", False),
+                        "firmware_notes": firmware_data.get("firmware_notes", []),
+                        "last_check": firmware_data.get("last_check", "Jamais"),
+                    }
+        
+        return {
+            "current_version": "Inconnue",
+            "latest_version": "Inconnue",
+            "upgrade_available": False,
+            "firmware_notes": [],
+            "last_check": "Jamais",
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Appelé quand l'entité est ajoutée à Home Assistant."""
+        await super().async_added_to_hass()
+        self.hass = self.hass  # Définir la référence hass
+        
+        # Si pas de coordinateur, essayer de le récupérer depuis hass.data
+        if not self.coordinator and DOMAIN in self.hass.data:
+            for entry_id, coordinator in self.hass.data[DOMAIN].items():
+                self.coordinator = coordinator
+                break
+        
+        if self.coordinator:
+            self.async_on_remove(
+                self.coordinator.async_add_listener(self.async_write_ha_state)
+            )
+
+    async def async_update(self) -> None:
+        """Mettre à jour le capteur."""
+        if self.coordinator:
+            await self.coordinator.async_request_refresh()
+        else:
+            # Mise à jour manuelle si pas de coordinateur
+            self._update_value_from_sources()
+            self.async_write_ha_state()
+
+    @callback
+    def handle_state_update(self, payload: dict[str, Any]) -> None:
+        """Gérer les mises à jour d'état depuis le coordinateur."""
+        # Appeler la méthode parent pour les données WebSocket/REST
+        super().handle_state_update(payload)
+        
+        # Mettre à jour les données firmware si disponibles
+        if "firmware" in payload:
+            firmware_data = payload["firmware"]
+            current_version = firmware_data.get("current_version", "Inconnue")
+            latest_version = firmware_data.get("latest_version", "Inconnue")
+            upgrade_available = firmware_data.get("upgrade_available", False)
+            firmware_notes = firmware_data.get("firmware_notes", [])
+            last_check = firmware_data.get("last_check", "Jamais")
+            
+            # Mettre à jour l'état principal
+            if upgrade_available:
+                self._attr_native_value = f"Mise à jour disponible ({latest_version})"
+            else:
+                self._attr_native_value = f"À jour ({current_version})"
+            
+            # Stocker les données firmware pour les attributs
+            self._firmware_data = {
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "upgrade_available": upgrade_available,
+                "firmware_notes": firmware_notes,
+                "last_check": last_check
+            }
+            
+            _LOGGER.info("Capteur firmware mis à jour: %s (upgrade: %s)", 
+                        self._attr_native_value, upgrade_available)
+        
+        # Notifier Home Assistant du changement
+        self.async_write_ha_state() 

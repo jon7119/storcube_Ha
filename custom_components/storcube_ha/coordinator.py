@@ -32,6 +32,7 @@ from .const import (
     CONF_LOGIN_NAME,
     CONF_AUTH_PASSWORD,
     DEFAULT_PORT,
+    DEFAULT_APP_CODE,
     TOPIC_BASE,
     TOPIC_BATTERY_STATUS,
     TOPIC_BATTERY_POWER,
@@ -47,6 +48,7 @@ from .const import (
     SET_POWER_URL,
     SET_THRESHOLD_URL,
 )
+from .firmware import StorCubeFirmwareManager
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)  # Activer le logging détaillé
@@ -94,13 +96,8 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         self.data = {
             "websocket": {},  # Données du WebSocket
             "rest_api": {},   # Données de l'API REST
-            "combined": {     # Données combinées
-                "battery_level": 0,
-                "battery_power": 0,
-                "solar_power": 0,
-                "temperature": 0,
-                "status": "unknown",
-            },
+            "combined": {},   # Données combinées (par equip_id)
+            "firmware": {},   # Données firmware
             "last_ws_update": None,
             "last_rest_update": None,
         }
@@ -113,12 +110,46 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         self._known_devices = set()
         self._rest_update_task = None  # Nouvelle tâche pour l'API REST
         
+        # Initialiser le gestionnaire de firmware
+        self.firmware_manager = StorCubeFirmwareManager(
+            hass=hass,
+            device_id=config_entry.data[CONF_DEVICE_ID],
+            login_name=config_entry.data[CONF_LOGIN_NAME],
+            auth_password=config_entry.data[CONF_AUTH_PASSWORD],
+            app_code=config_entry.data.get(CONF_APP_CODE, DEFAULT_APP_CODE)
+        )
+        
         _LOGGER.info(
             "Initialisation du coordinateur Storcube avec les paramètres: host=%s, port=%s, username=%s",
             config_entry.data[CONF_HOST],
             config_entry.data[CONF_PORT],
             config_entry.data[CONF_USERNAME],
         )
+        
+        # S'assurer que la structure des données est correcte dès l'initialisation
+        self._ensure_data_structure()
+
+    def _ensure_data_structure(self):
+        """S'assurer que la structure des données est correctement initialisée."""
+        _LOGGER.debug("Vérification de la structure des données...")
+        
+        if not hasattr(self, 'data') or self.data is None:
+            _LOGGER.warning("self.data est None, réinitialisation...")
+            self.data = {}
+        
+        required_keys = ["websocket", "rest_api", "combined", "firmware"]
+        for key in required_keys:
+            if key not in self.data:
+                _LOGGER.debug("Ajout de la clé manquante: %s", key)
+                self.data[key] = {}
+        
+        # S'assurer que les timestamps existent
+        if "last_ws_update" not in self.data:
+            self.data["last_ws_update"] = None
+        if "last_rest_update" not in self.data:
+            self.data["last_rest_update"] = None
+        
+        _LOGGER.debug("Structure des données après vérification: %s", list(self.data.keys()))
 
     def _get_device_info(self, equip_id, battery_data):
         """Créer les informations de l'appareil pour une batterie."""
@@ -295,29 +326,82 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                 "appCode": self.config_entry.data[CONF_APP_CODE]
             }
 
-            # Appeler l'API
-            response = requests.get(OUTPUT_URL, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+            # Construire l'URL avec le device_id
+            output_url = OUTPUT_URL + self.config_entry.data[CONF_DEVICE_ID]
 
-            if data.get("code") == 200 and data.get("data"):
-                scene_list = data["data"]
-                if scene_list:
-                    # Retourner le premier élément de la liste
-                    return scene_list[0]
-            
-            _LOGGER.warning("Aucune donnée de scène trouvée")
-            return None
+            # Appeler l'API de manière asynchrone
+            async with aiohttp.ClientSession() as session:
+                async with session.get(output_url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        if data.get("code") == 200 and data.get("data"):
+                            scene_list = data["data"]
+                            if scene_list:
+                                # Retourner le premier élément de la liste
+                                return scene_list[0]
+                        
+                        _LOGGER.warning("Aucune donnée de scène trouvée")
+                        return None
+                    else:
+                        _LOGGER.error(f"Erreur HTTP lors de la récupération des données de scène: {response.status}")
+                        return None
 
         except Exception as e:
             _LOGGER.error("Erreur lors de la récupération des données de scène: %s", str(e))
             return None
 
+    async def check_firmware_upgrade(self):
+        """Vérifier les mises à jour de firmware."""
+        try:
+            firmware_info = await self.firmware_manager.check_firmware_upgrade()
+            if firmware_info:
+                # Mettre à jour les données avec les informations de firmware
+                if "firmware" not in self.data:
+                    self.data["firmware"] = {}
+                
+                self.data["firmware"].update({
+                    "current_version": firmware_info.get("current_version", "Inconnue"),
+                    "latest_version": firmware_info.get("latest_version", "Inconnue"),
+                    "upgrade_available": firmware_info.get("upgrade_available", False),
+                    "firmware_notes": firmware_info.get("firmware_notes", []),
+                    "last_check": datetime.now().isoformat()
+                })
+                
+                _LOGGER.info("Vérification firmware terminée: %s", firmware_info)
+                return firmware_info
+            else:
+                _LOGGER.warning("Aucune information firmware disponible")
+                return None
+        except Exception as e:
+            _LOGGER.error("Erreur lors de la vérification du firmware: %s", str(e))
+            return None
+
+    async def get_firmware_info(self):
+        """Obtenir les informations de firmware actuelles."""
+        try:
+            return await self.firmware_manager.get_firmware_info()
+        except Exception as e:
+            _LOGGER.error("Erreur lors de l'obtention des informations firmware: %s", str(e))
+            return None
+
     async def async_setup(self):
         """Set up the coordinator."""
         try:
+            _LOGGER.info("Configuration du coordinateur StorCube...")
+            
+            # Vérification firmware initiale
+            _LOGGER.info("Vérification firmware initiale...")
+            firmware_result = await self.check_firmware_upgrade()
+            if firmware_result:
+                _LOGGER.info("Vérification firmware initiale réussie")
+            else:
+                _LOGGER.warning("Vérification firmware initiale échouée")
+            
             # Démarrer la tâche de mise à jour REST périodique
+            _LOGGER.info("Démarrage de la boucle de mise à jour REST...")
             self._rest_update_task = asyncio.create_task(self._rest_update_loop())
+            _LOGGER.info("Boucle de mise à jour REST démarrée")
             
             # S'abonner aux topics MQTT
             for topic in self._topics.values():
@@ -327,6 +411,7 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                     self.async_mqtt_message_received,
                     0,
                 )
+            _LOGGER.info("Configuration du coordinateur terminée")
             return True
         except Exception as err:
             _LOGGER.error("Erreur lors de la configuration: %s", err)
@@ -334,8 +419,13 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _rest_update_loop(self):
         """Boucle de mise à jour périodique pour l'API REST."""
+        firmware_check_counter = 0  # Compteur pour les vérifications firmware
+        _LOGGER.info("Démarrage de la boucle de mise à jour REST")
+        
         while True:
             try:
+                _LOGGER.debug("Cycle de mise à jour REST (compteur firmware: %d/20)", firmware_check_counter)
+                
                 scene_data = await self.get_scene_data()
                 if scene_data:
                     equip_id = scene_data.get("equipId")
@@ -368,14 +458,55 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                                 )
                         
                         _LOGGER.info("Données REST mises à jour pour l'équipement %s", equip_id)
+                else:
+                    _LOGGER.debug("Aucune donnée de scène récupérée")
+                
+                # Vérification firmware toutes les 10 minutes (20 cycles de 30 secondes)
+                firmware_check_counter += 1
+                _LOGGER.debug("Compteur firmware: %d/20", firmware_check_counter)
+                
+                if firmware_check_counter >= 20:
+                    _LOGGER.info("Vérification automatique du firmware...")
+                    firmware_info = await self.check_firmware_upgrade()
+                    if firmware_info:
+                        # Mettre à jour les capteurs avec les données firmware
+                        if self.config_entry.entry_id in self.hass.data[DOMAIN]:
+                            sensors = self.hass.data[DOMAIN][self.config_entry.entry_id].get("sensors", [])
+                            for sensor in sensors:
+                                if hasattr(sensor, 'handle_state_update'):
+                                    await self.hass.async_add_executor_job(
+                                        sensor.handle_state_update,
+                                        {"firmware": self.data["firmware"]}
+                                    )
+                        _LOGGER.info("Données firmware mises à jour")
+                    else:
+                        _LOGGER.warning("Échec de la vérification firmware automatique")
+                    firmware_check_counter = 0  # Réinitialiser le compteur
+                    
             except Exception as e:
                 _LOGGER.error("Erreur dans la boucle de mise à jour REST: %s", str(e))
             
+            _LOGGER.debug("Attente de 30 secondes avant le prochain cycle...")
             await asyncio.sleep(30)  # Attendre 30 secondes avant la prochaine mise à jour
 
     async def _async_update_data(self):
         """Mettre à jour les données combinées."""
         try:
+            # S'assurer que la structure des données est initialisée
+            self._ensure_data_structure()
+            
+            # Vérifier que les données sont correctement initialisées
+            if not hasattr(self, 'data') or self.data is None:
+                _LOGGER.error("self.data est None ou non défini")
+                self.data = {}
+                self._ensure_data_structure()
+            
+            if "combined" not in self.data:
+                _LOGGER.error("Clé 'combined' manquante dans self.data: %s", list(self.data.keys()) if self.data else "None")
+                self._ensure_data_structure()
+            
+            _LOGGER.debug("Structure des données avant mise à jour: %s", list(self.data.keys()))
+            
             # Combiner les données des deux sources
             for equip_id in self._known_devices:
                 if equip_id not in self.data["combined"]:
@@ -392,10 +523,12 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                         if key not in self.data["combined"][equip_id]:
                             self.data["combined"][equip_id][key] = value
 
+            _LOGGER.debug("Mise à jour des données combinées terminée")
             return self.data["combined"]
 
         except Exception as e:
             _LOGGER.error("Erreur lors de la mise à jour des données combinées: %s", e)
+            _LOGGER.error("État de self.data: %s", self.data if hasattr(self, 'data') else "Non défini")
             raise UpdateFailed(f"Erreur de mise à jour: {str(e)}")
 
     async def async_mqtt_message_received(self, msg):

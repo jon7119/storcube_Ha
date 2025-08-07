@@ -120,8 +120,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .coordinator import StorCubeDataUpdateCoordinator
     coordinator = StorCubeDataUpdateCoordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
+    
+    # Configurer le coordinateur (démarrage des boucles de mise à jour)
+    try:
+        await coordinator.async_setup()
+        _LOGGER.info("Coordinateur StorCube configuré avec succès")
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la configuration du coordinateur: %s", str(e))
+        raise ConfigEntryNotReady from e
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    
+    # Configurer les services
+    from .services import async_setup_services
+    await async_setup_services(hass)
+    
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -132,6 +145,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator:
             await coordinator.async_shutdown()
         hass.data[DOMAIN].pop(entry.entry_id)
+        
+        # Décharger les services
+        from .services import async_unload_services
+        await async_unload_services(hass)
 
     return unload_ok
 

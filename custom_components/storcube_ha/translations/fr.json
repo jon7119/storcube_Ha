@@ -83,6 +83,9 @@
             "firmware": {
                 "name": "Version Firmware"
             },
+            "firmware_status": {
+                "name": "État Firmware"
+            },
             "totalPv1power": {
                 "name": "Puissance Totale PV1"
             },

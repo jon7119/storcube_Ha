@@ -26,4 +26,10 @@ set_threshold:
         number:
           min: 0
           max: 100
-          unit_of_measurement: "%" 
+          unit_of_measurement: "%"
+
+# Service pour vérifier les mises à jour de firmware
+check_firmware:
+  name: Vérifier le firmware
+  description: Vérifie si une mise à jour de firmware est disponible pour la batterie StorCube.
+  fields: {} 
