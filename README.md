@@ -4,6 +4,8 @@
 
 Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT (fonctionne sans). Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
 
+!!!Attention l'intégration ne fonctionne plus avec la dernière MAJ de HA la HA2025.8
+
 ## Fonctionnalités
 
 - Récupération des données de la batterie en temps réel via WebSocket
