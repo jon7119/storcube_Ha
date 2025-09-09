@@ -52,6 +52,8 @@ from .const import (
     SET_POWER_URL,
     SET_THRESHOLD_URL,
 )
+from .battery_manager import StorCubeBatteryManager
+from .individual_battery_sensor import create_individual_battery_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,65 +67,230 @@ async def async_setup_entry(
     
     # Récupérer le coordinateur
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    
+    # Créer le gestionnaire de batteries
+    battery_manager = StorCubeBatteryManager()
+    
+    # Fonction pour obtenir l'ID de la batterie maître
+    def get_master_battery_id():
+        """Obtenir l'ID de la batterie maître."""
+        # Pour l'instant, on utilise le device_id principal comme batterie maître
+        # Plus tard, cela sera mis à jour quand les données WebSocket arriveront
+        return config[CONF_DEVICE_ID]
 
     sensors = [
-        # Capteurs de batterie
-        StorcubeBatteryLevelSensor(config),
-        StorcubeBatteryPowerSensor(config),
-        StorcubeBatteryTemperatureSensor(config),
-        StorcubeBatteryCapacityWhSensor(config),
-        StorcubeBatteryStatusSensor(config),
-        StorcubeBatteryThresholdSensor(config),
+        # Capteurs système globaux (seulement ceux qui ne sont pas dupliqués avec les capteurs individuels)
+        StorcubeBatteryThresholdSensor(config),  # Seuil de batterie (global)
         
-        # Capteurs solaires
+        # Capteurs solaires (globaux)
         StorcubeSolarPowerSensor(config),
         StorcubeSolarEnergySensor(config),
-        
-        # Capteurs solaires pour le deuxième panneau
         StorcubeSolarPowerSensor2(config),
         StorcubeSolarEnergySensor2(config),
-        
-        # Capteur d'énergie solaire totale
         StorcubeSolarEnergyTotalSensor(config),
         
-        # Capteurs de sortie
+        # Capteurs de sortie (globaux)
         StorcubeOutputPowerSensor(config),
         StorcubeOutputEnergySensor(config),
         
-        # Capteurs système
+        # Capteurs d'état système (globaux)
         StorcubeStatusSensor(config),
-        StorcubeModelSensor(config),
-        StorcubeSerialNumberSensor(config),
-        
-        # Capteurs d'état
         StorcubeOutputTypeSensor(config),
         StorcubeReservedSensor(config),
-        StorcubeWorkStatusSensor(config),
         StorcubeOnlineSensor(config),
-        StorcubeErrorCodeSensor(config),
         
-        # Capteur de firmware
+        # Capteur de firmware (global)
         StorcubeFirmwareSensor(config, coordinator),
         StorcubeOperatingModeSensor(config),
     ]
 
     async_add_entities(sensors)
 
-    # Store sensors in hass.data
+    # Store sensors and battery manager in hass.data
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
-    hass.data[DOMAIN][config_entry.entry_id] = {"sensors": sensors}
+    
+    # Récupérer le coordinateur existant
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    
+    # Ajouter les données des capteurs au coordinateur
+    coordinator.global_sensors = sensors  # Capteurs globaux (acceptent des dictionnaires)
+    coordinator.battery_manager = battery_manager
+    coordinator.individual_sensors = {}  # Pour stocker les capteurs individuels (acceptent des objets BatteryInfo)
+    coordinator.async_add_entities = async_add_entities  # Stocker le callback pour ajouter des entités
 
-    # Créer la vue Lovelace
-    await create_lovelace_view(hass, config_entry)
+    # Créer la vue Lovelace (temporairement désactivé)
+    # await create_lovelace_view(hass, config_entry)
 
     # Start websocket connection and output API connection
     asyncio.create_task(websocket_to_mqtt(hass, config, config_entry))
     asyncio.create_task(output_api_to_mqtt(hass, config, config_entry))
 
+async def create_individual_battery_sensors_for_battery(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry, 
+    equip_id: str, 
+    battery_info
+) -> None:
+    """Créer les capteurs individuels pour une batterie spécifique."""
+    try:
+        config = config_entry.data
+        _LOGGER.info("Batterie détectée: %s", equip_id)
+        _LOGGER.info("Informations batterie: SOC=%s%%, Temp=%s°C, Cap=%sWh, Maître=%s", 
+                    battery_info.soc, battery_info.temp, battery_info.capacity, battery_info.is_master)
+        
+        # Créer des capteurs réels pour cette batterie
+        individual_sensors = create_individual_battery_sensors(config, equip_id, battery_info)
+        _LOGGER.info("Capteurs créés pour la batterie %s: %d capteurs", equip_id, len(individual_sensors))
+        
+        # Récupérer le coordinateur
+        coordinator = hass.data[DOMAIN][config_entry.entry_id]
+        
+        # Ajouter les capteurs à la liste des capteurs individuels
+        if equip_id not in coordinator.individual_sensors:
+            coordinator.individual_sensors[equip_id] = []
+        
+        coordinator.individual_sensors[equip_id].extend(individual_sensors)
+        
+        # Ne pas ajouter les capteurs individuels à la liste globale car ils ont des méthodes handle_state_update différentes
+        
+        # Enregistrer les capteurs dans Home Assistant
+        async_add_entities_callback = coordinator.async_add_entities
+        if async_add_entities_callback is None:
+            _LOGGER.error("Callback async_add_entities non disponible pour la batterie %s", equip_id)
+            return
+        
+        _LOGGER.info("Enregistrement des capteurs dans Home Assistant pour la batterie %s", equip_id)
+        await async_add_entities_callback(individual_sensors)
+        
+        _LOGGER.info("Capteurs réels créés et enregistrés pour la batterie %s", equip_id)
+        
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la création des capteurs individuels pour %s: %s", equip_id, e)
+
+
+async def update_individual_battery_sensors(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry, 
+    battery_manager: StorCubeBatteryManager
+) -> None:
+    """Mettre à jour les capteurs individuels avec les nouvelles données."""
+    try:
+        _LOGGER.info("Mise à jour des capteurs individuels - Batteries dans le gestionnaire: %d", len(battery_manager.get_all_batteries()))
+        
+        new_batteries_detected = False
+        
+        # Récupérer le coordinateur
+        coordinator = hass.data[DOMAIN][config_entry.entry_id]
+        
+        # Vérifier s'il y a de nouvelles batteries
+        # D'abord créer la batterie maître, puis les batteries esclaves
+        batteries = battery_manager.get_all_batteries()
+        
+        # Trier les batteries : maître d'abord, puis esclaves
+        master_batteries = {k: v for k, v in batteries.items() if v.is_master}
+        slave_batteries = {k: v for k, v in batteries.items() if not v.is_master}
+        
+        # Créer d'abord la batterie maître
+        for equip_id, battery_info in master_batteries.items():
+            _LOGGER.info("Vérification de la batterie maître %s", equip_id)
+            if equip_id not in coordinator.individual_sensors:
+                # Créer les capteurs réels pour cette nouvelle batterie
+                _LOGGER.info("Nouvelle batterie maître détectée, création des capteurs: %s", equip_id)
+                await create_individual_battery_sensors_for_battery(hass, config_entry, equip_id, battery_info)
+                new_batteries_detected = True
+                _LOGGER.info("Nouvelle batterie maître détectée et capteurs créés: %s", equip_id)
+            else:
+                # Mettre à jour les capteurs existants avec les nouvelles données
+                if equip_id in coordinator.individual_sensors:
+                    for sensor in coordinator.individual_sensors[equip_id]:
+                        if hasattr(sensor, 'handle_state_update'):
+                            sensor.handle_state_update(battery_info)
+                            _LOGGER.debug("Capteur mis à jour pour la batterie maître %s", equip_id)
+        
+        # Ensuite créer les batteries esclaves
+        for equip_id, battery_info in slave_batteries.items():
+            _LOGGER.info("Vérification de la batterie esclave %s", equip_id)
+            if equip_id not in coordinator.individual_sensors:
+                # Créer les capteurs réels pour cette nouvelle batterie
+                _LOGGER.info("Nouvelle batterie esclave détectée, création des capteurs: %s", equip_id)
+                await create_individual_battery_sensors_for_battery(hass, config_entry, equip_id, battery_info)
+                new_batteries_detected = True
+                _LOGGER.info("Nouvelle batterie esclave détectée et capteurs créés: %s", equip_id)
+            else:
+                # Mettre à jour les capteurs existants avec les nouvelles données
+                if equip_id in coordinator.individual_sensors:
+                    for sensor in coordinator.individual_sensors[equip_id]:
+                        if hasattr(sensor, 'handle_state_update'):
+                            sensor.handle_state_update(battery_info)
+                            _LOGGER.debug("Capteur mis à jour pour la batterie esclave %s", equip_id)
+        
+        # Si de nouvelles batteries ont été détectées, mettre à jour la vue Lovelace (temporairement désactivé)
+        if new_batteries_detected:
+            _LOGGER.info("Nouvelles batteries détectées, mise à jour de la vue Lovelace...")
+            # await update_lovelace_view_dynamically(hass, config_entry)
+        
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la mise à jour des capteurs individuels: %s", e)
+
 async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     """Create the Lovelace view for Storcube."""
     device_id = config_entry.data[CONF_DEVICE_ID]
+    
+    # Attendre un peu pour que les capteurs soient créés
+    await asyncio.sleep(2)
+    
+    # Récupérer le coordinateur et le gestionnaire de batteries
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    battery_manager = coordinator.battery_manager
+    
+    # Créer les cartes pour les batteries individuelles
+    individual_battery_cards = []
+    battery_summary_entities = []
+    
+    for equip_id, battery_info in battery_manager.get_all_batteries().items():
+        role = "Maître" if battery_info.is_master else "Esclave"
+        
+        # Carte pour chaque batterie individuelle
+        individual_battery_cards.append({
+            "type": "grid",
+            "columns": 2,
+            "title": f"Batterie {equip_id} ({role})",
+            "cards": [
+                {
+                    "type": "gauge",
+                    "entity": f"sensor.{device_id}_battery_{equip_id}_level",
+                    "name": "Niveau",
+                    "min": 0,
+                    "max": 100,
+                    "severity": {
+                        "green": 50,
+                        "yellow": 25,
+                        "red": 10
+                    }
+                },
+                {
+                    "type": "sensor",
+                    "entity": f"sensor.{device_id}_battery_{equip_id}_temperature",
+                    "name": "Température",
+                    "icon": "mdi:thermometer"
+                },
+                {
+                    "type": "sensor",
+                    "entity": f"sensor.{device_id}_battery_{equip_id}_capacity",
+                    "name": "Capacité",
+                    "icon": "mdi:battery-charging"
+                }
+            ]
+        })
+        
+        # Ajouter les entités pour le résumé
+        battery_summary_entities.extend([
+            {
+                "entity": f"sensor.{device_id}_battery_{equip_id}_level",
+                "name": f"Batterie {battery_short_id}"
+            }
+        ])
     
     view_config = {
         "path": "storcube",
@@ -146,6 +313,11 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
                 }
             },
             {
+                "type": "entities",
+                "title": "Résumé des Batteries",
+                "entities": battery_summary_entities
+            },
+            {
                 "type": "grid",
                 "columns": 2,
                 "square": False,
@@ -153,7 +325,7 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
                     {
                         "type": "gauge",
                         "entity": f"sensor.{device_id}_battery_level",
-                        "name": "Niveau Batterie",
+                        "name": "Niveau Batterie Global",
                         "min": 0,
                         "max": 100,
                         "severity": {
@@ -233,28 +405,33 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
                         "graph": "line"
                     }
                 ]
-            },
-            {
-                "type": "history-graph",
-                "title": "Historique des Puissances",
-                "hours_to_show": 24,
-                "entities": [
-                    {
-                        "entity": f"sensor.{device_id}_solar_power",
-                        "name": "Solaire 1"
-                    },
-                    {
-                        "entity": f"sensor.{device_id}_solar_power_2",
-                        "name": "Solaire 2"
-                    },
-                    {
-                        "entity": f"sensor.{device_id}_output_power",
-                        "name": "Sortie"
-                    }
-                ]
             }
         ]
     }
+    
+    # Ajouter les cartes des batteries individuelles
+    view_config["cards"].extend(individual_battery_cards)
+    
+    # Ajouter le graphique d'historique à la fin
+    view_config["cards"].append({
+        "type": "history-graph",
+        "title": "Historique des Puissances",
+        "hours_to_show": 24,
+        "entities": [
+            {
+                "entity": f"sensor.{device_id}_solar_power",
+                "name": "Solaire 1"
+            },
+            {
+                "entity": f"sensor.{device_id}_solar_power_2",
+                "name": "Solaire 2"
+            },
+            {
+                "entity": f"sensor.{device_id}_output_power",
+                "name": "Sortie"
+            }
+        ]
+    })
 
     try:
         # Ajouter la vue à la configuration Lovelace existante
@@ -271,6 +448,19 @@ async def create_lovelace_view(hass: HomeAssistant, config_entry: ConfigEntry) -
     except Exception as e:
         _LOGGER.error("Erreur lors de la création de la vue Lovelace: %s", str(e))
 
+async def update_lovelace_view_dynamically(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Mettre à jour dynamiquement la vue Lovelace quand de nouvelles batteries sont détectées."""
+    try:
+        # Attendre un peu pour que les capteurs soient créés
+        await asyncio.sleep(1)
+        
+        # Recréer la vue Lovelace avec les nouvelles batteries
+        await create_lovelace_view(hass, config_entry)
+        _LOGGER.info("Vue Lovelace mise à jour dynamiquement")
+        
+    except Exception as e:
+        _LOGGER.error("Erreur lors de la mise à jour dynamique de la vue Lovelace: %s", str(e))
+
 class StorcubeBatterySensor(SensorEntity):
     """Capteur pour les données de la batterie solaire."""
 
@@ -280,6 +470,16 @@ class StorcubeBatterySensor(SensorEntity):
         self._websocket_data = {}
         self._rest_data = {}
         self._attr_native_value = None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Retourner les informations de l'appareil - associé à la batterie maître."""
+        return {
+            "identifiers": {(DOMAIN, self._config[CONF_DEVICE_ID])},
+            "name": f"Batterie StorCube {self._config[CONF_DEVICE_ID]} (Maître)",
+            "manufacturer": "StorCube",
+            "model": "S1000",
+        }
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -431,6 +631,16 @@ class StorcubeBatteryEnergySensor(SensorEntity):
         self._config = config
         self._attr_native_value = None
 
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Retourner les informations de l'appareil - associé à la batterie maître."""
+        return {
+            "identifiers": {(DOMAIN, self._config[CONF_DEVICE_ID])},
+            "name": f"Batterie StorCube {self._config[CONF_DEVICE_ID]} (Maître)",
+            "manufacturer": "StorCube",
+            "model": "S1000",
+        }
+
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
@@ -453,6 +663,16 @@ class StorcubeBatteryCapacityWhSensor(SensorEntity):
         self._config = config
         self._attr_native_value = None
         self._attr_icon = "mdi:battery-charging"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Retourner les informations de l'appareil - associé à la batterie maître."""
+        return {
+            "identifiers": {(DOMAIN, self._config[CONF_DEVICE_ID])},
+            "name": f"Batterie StorCube {self._config[CONF_DEVICE_ID]} (Maître)",
+            "manufacturer": "StorCube",
+            "model": "S1000",
+        }
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -477,6 +697,16 @@ class StorcubeBatteryHealthSensor(SensorEntity):
         self._attr_unique_id = f"{config[CONF_DEVICE_ID]}_battery_health"
         self._config = config
         self._attr_native_value = None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Retourner les informations de l'appareil - associé à la batterie maître."""
+        return {
+            "identifiers": {(DOMAIN, self._config[CONF_DEVICE_ID])},
+            "name": f"Batterie StorCube {self._config[CONF_DEVICE_ID]} (Maître)",
+            "manufacturer": "StorCube",
+            "model": "S1000",
+        }
 
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
@@ -515,6 +745,16 @@ class StorcubeBatteryStatusSensor(SensorEntity):
         self._config = config
         self._attr_native_value = None
 
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Retourner les informations de l'appareil - associé à la batterie maître."""
+        return {
+            "identifiers": {(DOMAIN, self._config[CONF_DEVICE_ID])},
+            "name": f"Batterie StorCube {self._config[CONF_DEVICE_ID]} (Maître)",
+            "manufacturer": "StorCube",
+            "model": "S1000",
+        }
+
     @callback
     def handle_state_update(self, payload: dict[str, Any]) -> None:
         """Handle state update from MQTT."""
@@ -525,8 +765,8 @@ class StorcubeBatteryStatusSensor(SensorEntity):
                 if "isWork" in equip:
                     self._attr_native_value = 'online' if equip["isWork"] == 1 else 'offline'
                 else:
-                    _LOGGER.warning("isWork non trouvé dans l'équipement: %s", equip)
-                    self._attr_native_value = 'unknown'
+                    # Si isWork n'est pas présent, considérer comme online si on a des données
+                    self._attr_native_value = 'online'
             else:
                 _LOGGER.warning("Structure de payload invalide: %s", payload)
                 self._attr_native_value = 'unknown'
@@ -1171,20 +1411,49 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entr
                                                 # Log toutes les clés du message
                                                 _LOGGER.debug("Structure du message reçu: %s", json_data)
                                                 
+                                                # Vérifier si c'est un message WebSocket avec l'ID de l'équipement
+                                                if config[CONF_DEVICE_ID] in json_data:
+                                                    equip_data = json_data[config[CONF_DEVICE_ID]]
+                                                    _LOGGER.info("Mise à jour des capteurs avec les données WebSocket: %s", equip_data)
+                                                    _LOGGER.info("ID de l'équipement trouvé dans le message WebSocket: %s", config[CONF_DEVICE_ID])
+                                                    
+                                                    # Récupérer le coordinateur et le gestionnaire de batteries
+                                                    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+                                                    battery_manager = coordinator.battery_manager
+                                                    battery_manager.update_from_websocket(equip_data)
+                                                    
+                                                    # Log des informations des batteries après mise à jour
+                                                    _LOGGER.info("Batteries dans le gestionnaire après mise à jour WebSocket:")
+                                                    for equip_id, battery_info in battery_manager.get_all_batteries().items():
+                                                        _LOGGER.info("  Batterie %s: SOC=%s%%, Temp=%s°C, Cap=%sWh, Maître=%s", 
+                                                                    equip_id, battery_info.soc, battery_info.temp, 
+                                                                    battery_info.capacity, battery_info.is_master)
+                                                    
+                                                    # Mettre à jour les capteurs globaux
+                                                    for sensor in coordinator.global_sensors:
+                                                        sensor.handle_state_update(equip_data)
+                                                    
+                                                    # Mettre à jour les capteurs individuels
+                                                    await update_individual_battery_sensors(hass, config_entry, battery_manager)
+                                                
                                                 # Vérifier si c'est une réponse d'API REST
-                                                if "code" in json_data and "data" in json_data and json_data["code"] == 200:
+                                                elif "code" in json_data and "data" in json_data and json_data["code"] == 200:
                                                     data_list = json_data.get("data", [])
                                                     if data_list and isinstance(data_list, list):
                                                         equip_data = data_list[0]
                                                         _LOGGER.info("Mise à jour des capteurs avec les données de l'API: %s", equip_data)
-                                                        for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                        
+                                                        # Récupérer le coordinateur et le gestionnaire de batteries
+                                                        coordinator = hass.data[DOMAIN][config_entry.entry_id]
+                                                        battery_manager = coordinator.battery_manager
+                                                        battery_manager.update_from_output_api(equip_data)
+                                                        
+                                                        # Mettre à jour les capteurs globaux
+                                                        for sensor in coordinator.global_sensors:
                                                             sensor.handle_state_update(equip_data)
-                                                # Vérifier si c'est une réponse WebSocket avec l'ID de l'équipement
-                                                elif config[CONF_DEVICE_ID] in json_data:
-                                                    equip_data = json_data[config[CONF_DEVICE_ID]]
-                                                    _LOGGER.info("Mise à jour des capteurs avec les données WebSocket: %s", equip_data)
-                                                    for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
-                                                        sensor.handle_state_update(equip_data)
+                                                        
+                                                        # Ne pas mettre à jour les capteurs individuels ici car l'API output n'a pas les données détaillées
+                                                        # Les capteurs individuels seront mis à jour quand les données WebSocket arriveront
                                                 else:
                                                     # Extraire les données d'équipement pour le format WebSocket
                                                     equip_data = next(iter(json_data.values()), {})
@@ -1194,13 +1463,40 @@ async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entr
                                                         # Si les données sont dans la liste
                                                         if "list" in equip_data and equip_data["list"]:
                                                             _LOGGER.info("Mise à jour des capteurs avec les données de la liste: %s", equip_data)
-                                                            for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                            
+                                                            # Récupérer le coordinateur et le gestionnaire de batteries
+                                                            coordinator = hass.data[DOMAIN][config_entry.entry_id]
+                                                            battery_manager = coordinator.battery_manager
+                                                            battery_manager.update_from_websocket(equip_data)
+                                                            
+                                                            # Log des informations des batteries après mise à jour
+                                                            _LOGGER.info("Batteries dans le gestionnaire après mise à jour liste WebSocket:")
+                                                            for equip_id, battery_info in battery_manager.get_all_batteries().items():
+                                                                _LOGGER.info("  Batterie %s: SOC=%s%%, Temp=%s°C, Cap=%sWh, Maître=%s", 
+                                                                            equip_id, battery_info.soc, battery_info.temp, 
+                                                                            battery_info.capacity, battery_info.is_master)
+                                                            
+                                                            # Mettre à jour les capteurs globaux
+                                                            for sensor in coordinator.global_sensors:
                                                                 sensor.handle_state_update(equip_data)
+                                                            
+                                                            # Mettre à jour les capteurs individuels
+                                                            await update_individual_battery_sensors(hass, config_entry, battery_manager)
                                                         # Si les données sont au niveau racine
                                                         else:
                                                             _LOGGER.info("Mise à jour des capteurs avec les données racines: %s", equip_data)
-                                                            for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                            
+                                                            # Récupérer le coordinateur et le gestionnaire de batteries
+                                                            coordinator = hass.data[DOMAIN][config_entry.entry_id]
+                                                            battery_manager = coordinator.battery_manager
+                                                            battery_manager.update_from_websocket(equip_data)
+                                                            
+                                                            # Mettre à jour les capteurs globaux
+                                                            for sensor in coordinator.global_sensors:
                                                                 sensor.handle_state_update(equip_data)
+                                                            
+                                                            # Mettre à jour les capteurs individuels
+                                                            await update_individual_battery_sensors(hass, config_entry, battery_manager)
                                                     else:
                                                         _LOGGER.debug("Message reçu sans données d'équipement valides")
                                             else:
@@ -1287,8 +1583,18 @@ async def output_api_to_mqtt(hass: HomeAssistant, config: ConfigType, config_ent
                                             if data_list and isinstance(data_list, list):
                                                 equip_data = data_list[0]
                                                 _LOGGER.info("Mise à jour des capteurs avec les données de l'API output: %s", equip_data)
-                                                for sensor in hass.data[DOMAIN][config_entry.entry_id]["sensors"]:
+                                                
+                                                # Récupérer le coordinateur et le gestionnaire de batteries
+                                                coordinator = hass.data[DOMAIN][config_entry.entry_id]
+                                                battery_manager = coordinator.battery_manager
+                                                battery_manager.update_from_output_api(equip_data)
+                                                
+                                                # Mettre à jour les capteurs globaux
+                                                for sensor in coordinator.global_sensors:
                                                     sensor.handle_state_update({"rest_data": equip_data})
+                                                
+                                                # Ne pas mettre à jour les capteurs individuels ici car l'API output n'a pas les données détaillées
+                                                # Les capteurs individuels seront mis à jour quand les données WebSocket arriveront
                                     except json.JSONDecodeError as e:
                                         _LOGGER.warning("Impossible de décoder la réponse JSON de l'API output: %s", e)
                                 
