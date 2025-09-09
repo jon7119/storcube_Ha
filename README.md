@@ -1,8 +1,8 @@
 ![](/custom_components/storcube_ha/res/logostorcubeHA.png)
 
-# Storcube Battery Monitor pour Home Assistant
+# Storcube/ASGOFT Battery Monitor pour Home Assistant
 
-Cette intégration permet de connecter votre batterie Storcube à Home Assistant via MQTT (fonctionne sans). Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
+Cette intégration permet de connecter votre batterie Storcube/ASGOFT  à Home Assistant via MQTT (fonctionne sans). Elle récupère les données de la batterie depuis le serveur Baterway et les transmet à Home Assistant.
 
 
 ## Fonctionnalités
@@ -21,10 +21,10 @@ Cette intégration permet de connecter votre batterie Storcube à Home Assistant
 ## Prérequis
 
 - Home Assistant
-- Un broker MQTT configuré et fonctionnel
+- Un broker MQTT configuré et fonctionnel (fonctionne sans)
 - Les informations de connexion à votre batterie Storcube :
   - Device ID (identifiant de votre batterie)
-  - App Code (par défaut : Storcube)
+  - App Code (par défaut : Storcube/ASGOFT)
   - Login Name (votre identifiant Baterway)
   - Password (votre mot de passe Baterway)
 
@@ -79,7 +79,7 @@ Après l'installation (via HACS ou manuellement) :
 
 ### Les données ne sont pas mises à jour
 
-1. Vérifiez que votre broker MQTT est accessible
+1. Vérifiez que votre broker MQTT est accessible (fonctionne sans)
 2. Vérifiez les logs de Home Assistant pour plus d'informations
 3. Assurez-vous que vos identifiants Baterway sont corrects
 4. Vérifiez que votre Device ID correspond bien à celui de votre batterie
