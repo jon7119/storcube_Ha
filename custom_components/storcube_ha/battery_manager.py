@@ -60,6 +60,18 @@ class StorCubeBatteryManager:
                     if main_equip_id in self.batteries:
                         self.batteries[main_equip_id].is_master = True
                         _LOGGER.debug("Batterie maître identifiée: %s", main_equip_id)
+            
+            # Mettre à jour les données disponibles depuis l'API output
+            # Ces données peuvent être utilisées pour les sensors individuels
+            main_equip_id = output_data.get("equipId")
+            if main_equip_id and main_equip_id in self.batteries:
+                battery = self.batteries[main_equip_id]
+                # L'API output ne contient pas toutes les données détaillées,
+                # mais on peut au moins mettre à jour les données disponibles
+                if "workStatus" in output_data:
+                    battery.isWork = output_data.get("workStatus")
+                # Mettre à jour le timestamp
+                battery.last_update = datetime.now()
                         
         except Exception as e:
             _LOGGER.error("Erreur lors de la mise à jour depuis l'API output: %s", e)

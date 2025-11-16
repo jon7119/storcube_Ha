@@ -8,12 +8,6 @@ import async_timeout
 import asyncio
 
 from homeassistant import config_entries
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PORT,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
@@ -25,7 +19,6 @@ from .const import (
     CONF_APP_CODE,
     CONF_LOGIN_NAME,
     CONF_AUTH_PASSWORD,
-    DEFAULT_PORT,
     DEFAULT_APP_CODE,
     TOKEN_URL,
 )
@@ -66,14 +59,10 @@ class StorcubeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
                     vol.Required(CONF_DEVICE_ID): str,
                     vol.Optional(CONF_APP_CODE, default=DEFAULT_APP_CODE): str,
                     vol.Required(CONF_LOGIN_NAME): str,
                     vol.Required(CONF_AUTH_PASSWORD): str,
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
                 }
             ),
             errors=errors,
@@ -173,14 +162,10 @@ class StorcubeOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default=current_config.get(CONF_HOST)): str,
-                    vol.Optional(CONF_PORT, default=current_config.get(CONF_PORT, DEFAULT_PORT)): int,
                     vol.Required(CONF_DEVICE_ID, default=current_config.get(CONF_DEVICE_ID)): str,
                     vol.Optional(CONF_APP_CODE, default=current_config.get(CONF_APP_CODE, DEFAULT_APP_CODE)): str,
                     vol.Required(CONF_LOGIN_NAME, default=current_config.get(CONF_LOGIN_NAME)): str,
                     vol.Required(CONF_AUTH_PASSWORD, default=current_config.get(CONF_AUTH_PASSWORD)): str,
-                    vol.Required(CONF_USERNAME, default=current_config.get(CONF_USERNAME)): str,
-                    vol.Required(CONF_PASSWORD, default=current_config.get(CONF_PASSWORD)): str,
                 }
             ),
             errors=errors,

@@ -7,21 +7,13 @@ import json
 import websockets
 import aiohttp
 
-import paho.mqtt.client as mqtt
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PORT,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-)
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.device_registry import DeviceRegistry
 from homeassistant.helpers import device_registry as dr
-from homeassistant.components import mqtt
 from homeassistant.helpers import storage
 
 from .const import (
@@ -31,24 +23,19 @@ from .const import (
     CONF_APP_CODE,
     CONF_LOGIN_NAME,
     CONF_AUTH_PASSWORD,
-    DEFAULT_PORT,
     DEFAULT_APP_CODE,
-    TOPIC_BASE,
-    TOPIC_BATTERY_STATUS,
-    TOPIC_BATTERY_POWER,
-    TOPIC_BATTERY_SOLAR,
-    TOPIC_OUTPUT,
-    TOPIC_OUTPUT_POWER,
-    TOPIC_THRESHOLD,
-    TOPIC_FIRMWARE,
     WS_URI,
     TOKEN_URL,
     FIRMWARE_URL,
     OUTPUT_URL,
     SET_POWER_URL,
     SET_THRESHOLD_URL,
+    DEVICE_LIST_URL,
+    DEVICE_INFO_URL,
+    DEVICE_STATUS_URL,
 )
 from .firmware import StorCubeFirmwareManager
+from .battery_manager import StorCubeBatteryManager
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)  # Activer le logging détaillé
@@ -60,16 +47,6 @@ OUTPUT_URL = "http://baterway.com/api/scene/user/list/V2"
 SET_POWER_URL = "http://baterway.com/api/slb/equip/set/power"
 SET_THRESHOLD_URL = "http://baterway.com/api/scene/threshold/set"
 WS_URI = "ws://baterway.com:9501/equip/info/"
-
-# Codes d'erreur MQTT
-MQTT_ERROR_CODES = {
-    0: "Connexion acceptée",
-    1: "Version du protocole MQTT non supportée",
-    2: "Identifiant client invalide",
-    3: "Serveur indisponible",
-    4: "Nom d'utilisateur ou mot de passe incorrect",
-    5: "Non autorisé",
-}
 
 class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching StorCube data."""
@@ -87,11 +64,6 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=30),
         )
         self.config_entry = config_entry
-        self._topics = {
-            "status": TOPIC_BATTERY_STATUS,
-            "power": TOPIC_BATTERY_POWER,
-            "solar": TOPIC_BATTERY_SOLAR,
-        }
         # Séparer clairement les données des différentes sources
         self.data = {
             "websocket": {},  # Données du WebSocket
@@ -102,7 +74,6 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             "last_rest_update": None,
         }
         self.hass = hass
-        self.mqtt_client = None
         self.ws = None
         self._connection_error = None
         self._auth_token = None
@@ -119,11 +90,16 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             app_code=config_entry.data.get(CONF_APP_CODE, DEFAULT_APP_CODE)
         )
         
+        # Initialiser le gestionnaire de batteries (sera partagé avec sensor.py)
+        self.battery_manager = StorCubeBatteryManager()
+        self.global_sensors = []
+        self.individual_sensors = {}
+        self.async_add_entities = None
+        
         _LOGGER.info(
-            "Initialisation du coordinateur Storcube avec les paramètres: host=%s, port=%s, username=%s",
-            config_entry.data[CONF_HOST],
-            config_entry.data[CONF_PORT],
-            config_entry.data[CONF_USERNAME],
+            "Initialisation du coordinateur Storcube avec les paramètres: device_id=%s, login_name=%s",
+            config_entry.data[CONF_DEVICE_ID],
+            config_entry.data[CONF_LOGIN_NAME],
         )
         
         # S'assurer que la structure des données est correcte dès l'initialisation
@@ -153,11 +129,18 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
 
     def _get_device_info(self, equip_id, battery_data):
         """Créer les informations de l'appareil pour une batterie."""
+        # Déterminer le rôle de la batterie depuis le battery_manager
+        role = ""
+        if hasattr(self, 'battery_manager') and self.battery_manager:
+            battery_info = self.battery_manager.get_battery_info(equip_id)
+            if battery_info:
+                role = " (Maître)" if battery_info.is_master else " (Esclave)"
+        
         return {
             "identifiers": {(DOMAIN, equip_id)},
-            "name": f"Batterie StorCube {equip_id}",
+            "name": f"Batterie StorCube {equip_id}{role}",
             "manufacturer": "StorCube",
-            "model": battery_data.get("equipType", "Unknown"),
+            "model": battery_data.get("equipType", "S1000"),
             "sw_version": battery_data.get("version", "Unknown"),
         }
 
@@ -187,18 +170,6 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             
             self._known_devices.add(equip_id)
             _LOGGER.info("Nouvelle batterie détectée et enregistrée: %s", equip_id)
-
-    def _get_mqtt_topics(self, equip_id):
-        """Obtenir les topics MQTT pour une batterie spécifique."""
-        return {
-            "status": TOPIC_BATTERY_STATUS.format(device_id=equip_id),
-            "power": TOPIC_BATTERY_POWER.format(device_id=equip_id),
-            "solar": TOPIC_BATTERY_SOLAR.format(device_id=equip_id),
-            "output": TOPIC_OUTPUT.format(device_id=equip_id),
-            "output_power": TOPIC_OUTPUT_POWER.format(device_id=equip_id),
-            "threshold": TOPIC_THRESHOLD.format(device_id=equip_id),
-            "firmware": TOPIC_FIRMWARE.format(device_id=equip_id),
-        }
 
     async def get_auth_token(self):
         """Récupérer le token d'authentification."""
@@ -345,7 +316,7 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                                 # Retourner le premier élément de la liste
                                 return scene_list[0]
                         
-                        _LOGGER.warning("Aucune donnée de scène trouvée")
+                        _LOGGER.debug("Aucune donnée de scène trouvée")
                         return None
                     else:
                         _LOGGER.error(f"Erreur HTTP lors de la récupération des données de scène: {response.status}")
@@ -407,28 +378,131 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             self._rest_update_task = asyncio.create_task(self._rest_update_loop())
             _LOGGER.info("Boucle de mise à jour REST démarrée")
             
-            # S'abonner aux topics MQTT
-            for topic in self._topics.values():
-                await mqtt.async_subscribe(
-                    self.hass,
-                    topic,
-                    self.async_mqtt_message_received,
-                    0,
-                )
             _LOGGER.info("Configuration du coordinateur terminée")
+            
+            # Récupérer les infos détaillées du device principal au démarrage
+            asyncio.create_task(self.get_device_info())
+            
             return True
         except Exception as err:
             _LOGGER.error("Erreur lors de la configuration: %s", err)
             raise ConfigEntryNotReady from err
 
+    async def discover_devices(self):
+        """Découvre automatiquement toutes les batteries sur le réseau."""
+        try:
+            token = await self.get_auth_token()
+            if not token:
+                _LOGGER.warning("Impossible de récupérer le token pour la découverte")
+                return []
+            
+            headers = {
+                "Authorization": token,
+                "Content-Type": "application/json",
+                "appCode": self.config_entry.data[CONF_APP_CODE]
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    DEVICE_LIST_URL,
+                    headers=headers,
+                    params={"device_id": self.config_entry.data[CONF_DEVICE_ID]}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            devices = data.get("data", {}).get("devices", [])
+                            if not devices and isinstance(data.get("data"), list):
+                                devices = data.get("data", [])
+                            
+                            _LOGGER.info("Découverte de %d appareil(s) StorCube", len(devices))
+                            
+                            # Enregistrer les nouveaux appareils
+                            for device in devices:
+                                device_id = device.get("deviceid") or device.get("equipId") or device.get("device_id")
+                                if device_id and device_id not in self._known_devices:
+                                    self._register_device(device_id, device)
+                                    _LOGGER.info("Nouvelle batterie découverte: %s", device_id)
+                            
+                            return devices
+                        else:
+                            _LOGGER.warning("Erreur lors de la découverte: %s", data.get("message"))
+                    else:
+                        _LOGGER.warning("Erreur HTTP lors de la découverte: %d", response.status)
+        except Exception as e:
+            _LOGGER.error("Erreur lors de la découverte automatique: %s", str(e))
+        
+        return []
+
+    async def get_device_info(self, device_id: str = None):
+        """Récupère les informations détaillées d'un appareil via /api/device/info."""
+        try:
+            if not device_id:
+                device_id = self.config_entry.data[CONF_DEVICE_ID]
+            
+            token = await self.get_auth_token()
+            if not token:
+                return None
+            
+            headers = {
+                "Authorization": token,
+                "Content-Type": "application/json",
+                "appCode": self.config_entry.data[CONF_APP_CODE]
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    DEVICE_INFO_URL,
+                    json={"device_id": device_id},
+                    headers=headers
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            device_info = data.get("data", {})
+                            
+                            # Stocker les données dans rest_api
+                            if device_id not in self.data["rest_api"]:
+                                self.data["rest_api"][device_id] = {}
+                            
+                            self.data["rest_api"][device_id].update(device_info)
+                            
+                            # Mettre à jour les capteurs
+                            if self.config_entry.entry_id in self.hass.data[DOMAIN]:
+                                coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+                                if hasattr(coordinator, 'global_sensors'):
+                                    for sensor in coordinator.global_sensors:
+                                        if hasattr(sensor, 'handle_state_update'):
+                                            sensor.handle_state_update({"device_info": device_info})
+                            
+                            return device_info
+        except Exception as e:
+            _LOGGER.error("Erreur lors de la récupération des infos appareil: %s", str(e))
+        
+        return None
+
     async def _rest_update_loop(self):
         """Boucle de mise à jour périodique pour l'API REST."""
         firmware_check_counter = 0  # Compteur pour les vérifications firmware
+        discovery_counter = 0  # Compteur pour la découverte automatique
         _LOGGER.info("Démarrage de la boucle de mise à jour REST")
         
         while True:
             try:
                 _LOGGER.debug("Cycle de mise à jour REST (compteur firmware: %d/20)", firmware_check_counter)
+                
+                # Découverte automatique toutes les 5 minutes (10 cycles)
+                discovery_counter += 1
+                if discovery_counter >= 10:
+                    _LOGGER.info("Découverte automatique des batteries...")
+                    discovered_devices = await self.discover_devices()
+                    if discovered_devices:
+                        # Récupérer les infos détaillées pour chaque nouveau device
+                        for device in discovered_devices:
+                            device_id = device.get("deviceid") or device.get("equipId") or device.get("device_id")
+                            if device_id:
+                                await self.get_device_info(device_id)
+                    discovery_counter = 0
                 
                 scene_data = await self.get_scene_data()
                 if scene_data:
@@ -535,28 +609,8 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("État de self.data: %s", self.data if hasattr(self, 'data') else "Non défini")
             raise UpdateFailed(f"Erreur de mise à jour: {str(e)}")
 
-    async def async_mqtt_message_received(self, msg):
-        """Handle received MQTT message."""
-        topic = msg.topic
-        payload = msg.payload
-        try:
-            data = json.loads(payload)
-            if "status" in topic:
-                self.data["status"] = "online" if data.get("value") == 1 else "offline"
-            elif "power" in topic:
-                self.data["battery_power"] = float(data.get("value", 0))
-            elif "solar" in topic:
-                self.data["solar_power"] = float(data.get("value", 0))
-            
-            # Notifier Home Assistant que les données ont changé
-            self.async_set_updated_data(self.data)
-        except json.JSONDecodeError:
-            _LOGGER.error("Erreur lors du décodage du message MQTT: %s", payload)
-        except ValueError:
-            _LOGGER.error("Valeur invalide dans le message MQTT: %s", payload)
-
     async def _websocket_listener(self):
-        """Écouter les données WebSocket et les publier sur MQTT."""
+        """Écouter les données WebSocket."""
         while True:
             try:
                 _LOGGER.info("Connexion au WebSocket...")
@@ -578,49 +632,10 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                                     # Enregistrer la batterie si elle est nouvelle
                                     self._register_device(equip_id, battery)
                                     
-                                    # Obtenir les topics pour cette batterie
-                                    topics = self._get_mqtt_topics(equip_id)
+                                    # Mettre à jour les données dans le coordinateur
+                                    self.data["websocket"][equip_id] = battery
                                     
-                                    # Publier les données sur MQTT
-                                    if self.mqtt_client and self.mqtt_client.is_connected():
-                                        # Status
-                                        self.mqtt_client.publish(topics["status"], json.dumps({
-                                            "value": battery.get("fgOnline", 0)
-                                        }))
-                                        
-                                        # Power
-                                        self.mqtt_client.publish(topics["power"], json.dumps({
-                                            "value": battery.get("power", 0)
-                                        }))
-                                        
-                                        # Solar
-                                        self.mqtt_client.publish(topics["solar"], json.dumps({
-                                            "value": battery.get("solarPower", 0)
-                                        }))
-                                        
-                                        # Capacity
-                                        self.mqtt_client.publish(topics["capacity"], json.dumps({
-                                            "value": battery.get("soc", 0)
-                                        }))
-                                        
-                                        # Output
-                                        self.mqtt_client.publish(topics["output"], json.dumps(battery))
-                                        
-                                        # Report (données complètes pour cette batterie)
-                                        battery_report = {"list": [battery]}
-                                        self.mqtt_client.publish(topics["report"], json.dumps(battery_report))
-                                        
-                                        # Mettre à jour les données dans le coordinateur
-                                        self.data["websocket"][equip_id] = {
-                                            "battery_status": json.dumps({"value": battery.get("fgOnline", 0)}),
-                                            "battery_power": json.dumps({"value": battery.get("power", 0)}),
-                                            "battery_solar": json.dumps({"value": battery.get("solarPower", 0)}),
-                                            "battery_capacity": json.dumps({"value": battery.get("soc", 0)}),
-                                            "battery_output": json.dumps(battery),
-                                            "battery_report": json.dumps(battery_report),
-                                        }
-                                    
-                                    _LOGGER.debug("Données publiées pour la batterie %s", equip_id)
+                                    _LOGGER.debug("Données reçues pour la batterie %s", equip_id)
                                 
                                 # Mettre à jour toutes les entités
                                 self.async_set_updated_data(self.data)
@@ -637,93 +652,6 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Erreur WebSocket: %s", e)
             
             await asyncio.sleep(5)  # Attendre avant de réessayer
-
-    async def _setup_mqtt(self):
-        """Configurer la connexion MQTT."""
-        if self.mqtt_client:
-            _LOGGER.info("Déconnexion du client MQTT existant")
-            self.mqtt_client.disconnect()
-
-        self.mqtt_client = mqtt.Client(client_id=f"ha-storcube-{self.config_entry.entry_id}")
-        
-        def on_connect(client, userdata, flags, rc):
-            """Callback lors de la connexion."""
-            if rc == 0:
-                _LOGGER.info("Connecté au broker MQTT avec succès")
-                # Les abonnements seront gérés dynamiquement lors de la détection des batteries
-            else:
-                error_msg = MQTT_ERROR_CODES.get(rc, f"Erreur inconnue (code {rc})")
-                self._connection_error = f"Échec de connexion MQTT : {error_msg}"
-                _LOGGER.error(self._connection_error)
-                
-                if rc in [4, 5]:
-                    _LOGGER.error("Problème d'authentification MQTT. Vérifiez les identifiants.")
-                elif rc == 3:
-                    _LOGGER.error("Serveur MQTT indisponible. Vérifiez la configuration.")
-
-        def on_disconnect(client, userdata, rc):
-            """Callback lors de la déconnexion."""
-            if rc != 0:
-                _LOGGER.warning("Déconnexion MQTT inattendue (code: %s)", rc)
-            else:
-                _LOGGER.info("Déconnexion MQTT normale")
-
-        def on_message(client, userdata, msg):
-            """Callback lors de la réception d'un message."""
-            try:
-                # Traiter le message reçu
-                payload = msg.payload.decode('utf-8')
-                data = json.loads(payload)
-                _LOGGER.debug("Message MQTT reçu sur %s: %s", msg.topic, data)
-                
-                # Mettre à jour les données du coordinateur
-                if "status" in msg.topic:
-                    self.data["status"] = "online" if data.get("value") == 1 else "offline"
-                elif "power" in msg.topic:
-                    self.data["battery_power"] = float(data.get("value", 0))
-                elif "solar" in msg.topic:
-                    self.data["solar_power"] = float(data.get("value", 0))
-                elif "capacity" in msg.topic:
-                    self.data["battery_level"] = float(data.get("value", 0))
-                
-                # Notifier Home Assistant que les données ont changé
-                self.async_set_updated_data(self.data)
-                
-            except json.JSONDecodeError as e:
-                _LOGGER.error("Erreur de décodage JSON du message MQTT: %s", e)
-            except Exception as e:
-                _LOGGER.error("Erreur lors du traitement du message MQTT: %s", e)
-
-        # Configurer les callbacks
-        self.mqtt_client.on_connect = on_connect
-        self.mqtt_client.on_disconnect = on_disconnect
-        self.mqtt_client.on_message = on_message
-
-        # Configurer l'authentification si nécessaire
-        if CONF_USERNAME in self.config_entry.data and CONF_PASSWORD in self.config_entry.data:
-            self.mqtt_client.username_pw_set(
-                self.config_entry.data[CONF_USERNAME],
-                self.config_entry.data[CONF_PASSWORD]
-            )
-
-        # Se connecter au broker MQTT
-        try:
-            host = self.config_entry.data[CONF_HOST]
-            port = self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
-            
-            _LOGGER.info("Connexion au broker MQTT %s:%s", host, port)
-            self.mqtt_client.connect(host, port, 60)
-            self.mqtt_client.loop_start()
-            
-        except Exception as e:
-            _LOGGER.error("Erreur lors de la connexion MQTT: %s", e)
-            self._connection_error = f"Erreur de connexion MQTT: {str(e)}"
-
-    async def reconnect_mqtt(self):
-        """Reconnecter au broker MQTT."""
-        if self.mqtt_client:
-            self.mqtt_client.disconnect()
-        await self._setup_mqtt()
 
     async def async_shutdown(self):
         """Arrêter le coordinateur proprement."""
@@ -745,15 +673,4 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
             except asyncio.CancelledError:
                 pass
         
-        # Déconnecter le client MQTT
-        if self.mqtt_client:
-            self.mqtt_client.loop_stop()
-            self.mqtt_client.disconnect()
-        
         _LOGGER.info("Coordinateur Storcube arrêté")
-
-async def websocket_to_mqtt(hass: HomeAssistant, config: ConfigType, config_entry: ConfigEntry) -> None:
-    """Fonction pour convertir les données WebSocket en MQTT."""
-    # Cette fonction est maintenue pour la compatibilité
-    _LOGGER.info("Fonction websocket_to_mqtt appelée")
-    pass

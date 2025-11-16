@@ -5,14 +5,10 @@
                 "title": "Storcube Battery Configuration",
                 "description": "Configure your Storcube battery",
                 "data": {
-                    "host": "MQTT Broker Address",
-                    "port": "MQTT Port",
                     "device_id": "Device ID",
                     "app_code": "Application Code",
                     "login_name": "Username",
-                    "auth_password": "Password",
-                    "username": "MQTT Username",
-                    "password": "MQTT Password"
+                    "auth_password": "Password"
                 }
             }
         },
@@ -31,14 +27,10 @@
                 "title": "Storcube Battery Options",
                 "description": "Modify your Storcube battery configuration",
                 "data": {
-                    "host": "MQTT Broker Address",
-                    "port": "MQTT Port",
                     "device_id": "Device ID",
                     "app_code": "Application Code",
                     "login_name": "Username",
-                    "auth_password": "Password",
-                    "username": "MQTT Username",
-                    "password": "MQTT Password"
+                    "auth_password": "Password"
                 }
             }
         },

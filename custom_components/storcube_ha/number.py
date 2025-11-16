@@ -10,9 +10,13 @@ from homeassistant.const import (
     CONF_DEVICE_ID,
     UnitOfPower,
     PERCENTAGE,
+    UnitOfElectricPotential,
+    UnitOfElectricCurrent,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
@@ -24,10 +28,33 @@ from .const import (
     CONF_APP_CODE,
     CONF_LOGIN_NAME,
     CONF_AUTH_PASSWORD,
+    DEVICE_SETTINGS_URL,
+    POWER_SETTINGS_URL,
+    CONF_DEVICE_ID,
 )
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class StorcubeBaseNumber(NumberEntity):
+    """Classe de base pour tous les numbers Storcube."""
+    
+    def __init__(self, config: ConfigType, device_id: str) -> None:
+        """Initialize base number."""
+        self._config = config
+        self._device_id = device_id
+    
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Retourner les informations de l'appareil."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name="StorCube Battery Monitor",
+            manufacturer="StorCube",
+            model="S1000",
+        )
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -61,13 +88,55 @@ async def async_setup_entry(
             app_code,
             login_name,
             auth_password,
-        )
+        ),
+        StorcubeChargeLimitNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
+        StorcubeDischargeLimitNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
+        StorcubeVoltageSetpointNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
+        StorcubeCurrentSetpointNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
+        StorcubePowerLimitNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
+        StorcubeTemperatureLimitNumber(
+            config,
+            device_id,
+            app_code,
+            login_name,
+            auth_password,
+        ),
     ]
 
     async_add_entities(entities)
 
 
-class StorcubePowerNumber(NumberEntity):
+class StorcubePowerNumber(StorcubeBaseNumber):
     """Représente le contrôle de puissance de sortie StorCube."""
 
     def __init__(
@@ -79,8 +148,7 @@ class StorcubePowerNumber(NumberEntity):
         auth_password: str,
     ) -> None:
         """Initialize the Storcube Power Number."""
-        self._config = config
-        self._device_id = device_id
+        super().__init__(config, device_id)
         self._app_code = app_code
         self._login_name = login_name
         self._auth_password = auth_password
@@ -199,7 +267,7 @@ class StorcubePowerNumber(NumberEntity):
         return False
 
 
-class StorcubeThresholdNumber(NumberEntity):
+class StorcubeThresholdNumber(StorcubeBaseNumber):
     """Représente le contrôle du seuil de batterie StorCube."""
 
     def __init__(
@@ -211,8 +279,7 @@ class StorcubeThresholdNumber(NumberEntity):
         auth_password: str,
     ) -> None:
         """Initialize the Storcube Threshold Number."""
-        self._config = config
-        self._device_id = device_id
+        super().__init__(config, device_id)
         self._app_code = app_code
         self._login_name = login_name
         self._auth_password = auth_password
@@ -382,4 +449,442 @@ class StorcubeThresholdNumber(NumberEntity):
 
         except Exception as e:
             _LOGGER.error(f"Erreur lors de la modification du seuil: {e}")
-            return False 
+            return False
+
+
+class StorcubeChargeLimitNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la limite de charge."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Charge Limit Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Limite de Charge StorCube"
+        self._attr_unique_id = f"{device_id}_charge_limit"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 100.0
+        self._attr_native_step = 1.0
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 80.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the charge limit value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    DEVICE_SETTINGS_URL,
+                    json={"device_id": self._device_id, "charge_limit": int(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la limite de charge: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None
+
+
+class StorcubeDischargeLimitNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la limite de décharge."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Discharge Limit Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Limite de Décharge StorCube"
+        self._attr_unique_id = f"{device_id}_discharge_limit"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 100.0
+        self._attr_native_step = 1.0
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 20.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the discharge limit value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    DEVICE_SETTINGS_URL,
+                    json={"device_id": self._device_id, "discharge_limit": int(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la limite de décharge: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None
+
+
+class StorcubeVoltageSetpointNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la consigne de tension."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Voltage Setpoint Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Consigne Tension StorCube"
+        self._attr_unique_id = f"{device_id}_voltage_setpoint"
+        self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 500.0
+        self._attr_native_step = 1.0
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 230.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the voltage setpoint value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    POWER_SETTINGS_URL,
+                    json={"device_id": self._device_id, "voltage_setpoint": float(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la consigne de tension: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None
+
+
+class StorcubeCurrentSetpointNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la consigne de courant."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Current Setpoint Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Consigne Courant StorCube"
+        self._attr_unique_id = f"{device_id}_current_setpoint"
+        self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 100.0
+        self._attr_native_step = 0.1
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 10.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the current setpoint value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    POWER_SETTINGS_URL,
+                    json={"device_id": self._device_id, "current_setpoint": float(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la consigne de courant: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None
+
+
+class StorcubePowerLimitNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la limite de puissance."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Power Limit Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Limite de Puissance StorCube"
+        self._attr_unique_id = f"{device_id}_power_limit"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 10000.0
+        self._attr_native_step = 100.0
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 5000.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the power limit value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    POWER_SETTINGS_URL,
+                    json={"device_id": self._device_id, "power_limit": int(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la limite de puissance: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None
+
+
+class StorcubeTemperatureLimitNumber(StorcubeBaseNumber):
+    """Représente le contrôle de la limite de température."""
+
+    def __init__(
+        self,
+        config: ConfigType,
+        device_id: str,
+        app_code: str,
+        login_name: str,
+        auth_password: str,
+    ) -> None:
+        """Initialize the Storcube Temperature Limit Number."""
+        super().__init__(config, device_id)
+        self._app_code = app_code
+        self._login_name = login_name
+        self._auth_password = auth_password
+        self._attr_name = f"Limite de Température StorCube"
+        self._attr_unique_id = f"{device_id}_temperature_limit"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_native_min_value = -20.0
+        self._attr_native_max_value = 80.0
+        self._attr_native_step = 1.0
+        self._attr_mode = NumberMode.SLIDER
+        self._attr_native_value = 60.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the temperature limit value."""
+        token = await self._get_auth_token()
+        if not token:
+            return
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    DEVICE_SETTINGS_URL,
+                    json={"device_id": self._device_id, "temperature_limit": float(value)},
+                    headers={
+                        "Authorization": token,
+                        "Content-Type": "application/json",
+                        "appCode": self._app_code
+                    }
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("code") == 200:
+                            self._attr_native_value = value
+                            self.async_write_ha_state()
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la modification de la limite de température: {e}")
+
+    async def _get_auth_token(self) -> str | None:
+        """Récupérer le token d'authentification."""
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    TOKEN_URL,
+                    json={
+                        "appCode": self._app_code,
+                        "loginName": self._login_name,
+                        "password": self._auth_password
+                    },
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('code') == 200:
+                            return data['data']['token']
+        except Exception as e:
+            _LOGGER.error(f"Erreur lors de la récupération du token: {e}")
+        return None 
