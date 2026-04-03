@@ -4,7 +4,6 @@
   "documentation": "https://github.com/jon7119/storcube_Ha",
   "issue_tracker": "https://github.com/jon7119/storcube_Ha/issues",
   "codeowners": ["@jon7119"],
-  "requirements": ["requests~=2.32.3"],
   "iot_class": "local_push",
   "version": "V1.3.1-beta2",
   "config_flow": true,
