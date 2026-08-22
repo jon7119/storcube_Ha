@@ -74,12 +74,13 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
             # Pas de polling : les rafraîchissements sont poussés par la boucle
             # REST et par le listener WebSocket via async_request_refresh().
             update_interval=None,
         )
-        self.config_entry = config_entry
+        # self.config_entry est désormais posé par DataUpdateCoordinator.
 
         # État brut, séparé de self.data qui appartient au DataUpdateCoordinator.
         # Ne JAMAIS écrire dans self.data : la classe parente l'écrase à chaque
@@ -534,6 +535,13 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
                 scene_data = await self.async_get_scene_data()
             except asyncio.CancelledError:
                 raise
+            except ConfigEntryAuthFailed as err:
+                # Identifiants devenus invalides en cours d'exécution : on
+                # déclenche le flux de ré-authentification de HA et on arrête
+                # la boucle. Le rechargement de l'entrée relancera tout.
+                _LOGGER.warning("Ré-authentification StorCube requise : %s", err)
+                self.config_entry.async_start_reauth(self.hass)
+                return
             except Exception as err:  # noqa: BLE001
                 failures += 1
                 delay = min(self._rest_interval * (2**failures), REST_BACKOFF_MAX)
@@ -667,6 +675,10 @@ class StorCubeDataUpdateCoordinator(DataUpdateCoordinator):
 
             except asyncio.CancelledError:
                 raise
+            except ConfigEntryAuthFailed as err:
+                _LOGGER.warning("Ré-authentification StorCube requise : %s", err)
+                self.config_entry.async_start_reauth(self.hass)
+                return
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug(
                     "WebSocket interrompu (%s), reconnexion dans %s s", err, retry
