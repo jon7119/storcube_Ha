@@ -22,9 +22,10 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import StorCubeDataUpdateCoordinator
@@ -523,7 +524,7 @@ class StorCubeEnergySensor(StorCubeEntity, RestoreSensor):
     def _handle_coordinator_update(self) -> None:
         """Intégrer la puissance courante sur l'intervalle écoulé."""
         power = self.entity_description.power_fn(self._device_data)
-        now = datetime.now()
+        now = dt_util.utcnow()
 
         if power is not None and power >= 0:
             if self._last_power is not None and self._last_time is not None:
