@@ -1,35 +1,70 @@
-# Service pour définir la puissance de sortie
 set_power:
-  name: Définir la puissance
-  description: Définit la puissance de sortie de la batterie.
+  name: Régler la puissance de sortie
+  description: >-
+    Définit la consigne de puissance de sortie de la batterie StorCube.
   fields:
     power:
       name: Puissance
-      description: Puissance en watts (W)
+      description: Consigne de puissance en watts.
       required: true
+      example: 300
       selector:
         number:
           min: 0
-          max: 10000
+          max: 800
+          step: 1
           unit_of_measurement: W
+          mode: slider
+    device_id:
+      name: Identifiant d'équipement
+      description: >-
+        Identifiant StorCube à piloter. Obligatoire uniquement si plusieurs
+        entrées sont configurées.
+      required: false
+      example: "ABC123456789"
+      selector:
+        text:
 
-# Service pour définir le seuil de décharge
 set_threshold:
-  name: Définir le seuil
-  description: Définit le seuil de décharge de la batterie.
+  name: Régler le seuil de décharge
+  description: >-
+    Définit le niveau de charge en dessous duquel la batterie cesse de se
+    décharger.
   fields:
     threshold:
       name: Seuil
-      description: Seuil en pourcentage (0-100)
+      description: Seuil de décharge en pourcentage.
       required: true
+      example: 20
       selector:
         number:
           min: 0
           max: 100
+          step: 1
           unit_of_measurement: "%"
+          mode: slider
+    device_id:
+      name: Identifiant d'équipement
+      description: >-
+        Identifiant StorCube à piloter. Obligatoire uniquement si plusieurs
+        entrées sont configurées.
+      required: false
+      example: "ABC123456789"
+      selector:
+        text:
 
-# Service pour vérifier les mises à jour de firmware
 check_firmware:
   name: Vérifier le firmware
-  description: Vérifie si une mise à jour de firmware est disponible pour la batterie StorCube.
-  fields: {} 
+  description: >-
+    Interroge l'API StorCube et retourne la version installée, la dernière
+    version disponible et les notes de version.
+  fields:
+    device_id:
+      name: Identifiant d'équipement
+      description: >-
+        Identifiant StorCube à interroger. Obligatoire uniquement si plusieurs
+        entrées sont configurées.
+      required: false
+      example: "ABC123456789"
+      selector:
+        text:

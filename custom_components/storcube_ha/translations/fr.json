@@ -1,138 +1,137 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Configuration de la Batterie Storcube",
-                "description": "Configurez votre batterie Storcube",
-                "data": {
-                    "host": "Adresse du Broker MQTT",
-                    "port": "Port MQTT",
-                    "device_id": "ID de l'appareil",
-                    "app_code": "Code de l'application",
-                    "login_name": "Nom d'utilisateur",
-                    "auth_password": "Mot de passe",
-                    "username": "Nom d'utilisateur MQTT",
-                    "password": "Mot de passe MQTT"
-                }
-            }
+  "config": {
+    "step": {
+      "user": {
+        "title": "Batterie Storcube",
+        "description": "Identifiants de votre compte de l'application mobile STORCUBE. Ce ne sont ni ceux de Home Assistant, ni ceux d'un broker MQTT.",
+        "data": {
+          "device_id": "Identifiant de l'équipement",
+          "login_name": "Identifiant de connexion",
+          "auth_password": "Mot de passe",
+          "app_code": "Code application"
         },
-        "error": {
-            "cannot_connect": "Échec de la connexion",
-            "invalid_auth": "Authentification invalide",
-            "unknown": "Erreur inattendue"
-        },
-        "abort": {
-            "already_configured": "Cette batterie est déjà configurée"
+        "data_description": {
+          "device_id": "Numéro de série de la batterie maître, visible dans l'application.",
+          "login_name": "L'adresse e-mail complète si vous vous êtes inscrit ainsi.",
+          "app_code": "Laissez la valeur par défaut sauf indication contraire."
         }
+      },
+      "reauth_confirm": {
+        "title": "Réauthentification Storcube",
+        "description": "Les identifiants de la batterie {device_id} ont été refusés. Saisissez-les à nouveau.",
+        "data": {
+          "login_name": "Identifiant de connexion",
+          "auth_password": "Mot de passe"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurer la batterie Storcube",
+        "description": "Modifiez les paramètres de connexion. L'identifiant d'équipement doit rester celui de la batterie déjà configurée.",
+        "data": {
+          "device_id": "Identifiant de l'équipement",
+          "login_name": "Identifiant de connexion",
+          "auth_password": "Mot de passe",
+          "app_code": "Code application"
+        }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Options de la Batterie Storcube",
-                "description": "Modifiez la configuration de votre batterie Storcube",
-                "data": {
-                    "host": "Adresse du Broker MQTT",
-                    "port": "Port MQTT",
-                    "device_id": "ID de l'appareil",
-                    "app_code": "Code de l'application",
-                    "login_name": "Nom d'utilisateur",
-                    "auth_password": "Mot de passe",
-                    "username": "Nom d'utilisateur MQTT",
-                    "password": "Mot de passe MQTT"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Échec de la connexion",
-            "invalid_auth": "Authentification invalide",
-            "unknown": "Erreur inattendue"
-        }
+    "error": {
+      "cannot_connect": "Impossible de joindre l'API Storcube.",
+      "invalid_auth": "Identifiants refusés par l'API.",
+      "unknown": "Erreur inattendue."
     },
-    "entity": {
-        "sensor": {
-            "battery_level": {
-                "name": "Niveau Batterie"
-            },
-            "battery_power": {
-                "name": "Puissance Batterie"
-            },
-            "battery_temperature": {
-                "name": "Température Batterie"
-            },
-            "battery_energy": {
-                "name": "Énergie Batterie"
-            },
-            "battery_capacity": {
-                "name": "Capacité Batterie"
-            },
-            "battery_health": {
-                "name": "Santé Batterie"
-            },
-            "solar_power": {
-                "name": "Puissance Solaire"
-            },
-            "solar_energy": {
-                "name": "Énergie Solaire Produite"
-            },
-            "output_power": {
-                "name": "Puissance Sortie"
-            },
-            "status": {
-                "name": "État Système"
-            },
-            "firmware": {
-                "name": "Version Firmware"
-            },
-            "firmware_status": {
-                "name": "État Firmware"
-            },
-            "totalPv1power": {
-                "name": "Puissance Totale PV1"
-            },
-            "totalInvPower": {
-                "name": "Puissance Totale de l'Inverseur"
-            },
-            "temp": {
-                "name": "Température"
-            },
-            "pv1power": {
-                "name": "Puissance PV1"
-            },
-            "soc": {
-                "name": "État de Charge"
-            },
-            "pv2power": {
-                "name": "Puissance PV2"
-            },
-            "capacity": {
-                "name": "Capacité"
-            },
-            "isWork": {
-                "name": "État de Fonctionnement"
-            },
-            "invPower": {
-                "name": "Puissance de l'Inverseur"
-            },
-            "plugPower": {
-                "name": "Puissance de la Prise"
-            },
-            "totalCapacity": {
-                "name": "Capacité Totale"
-            },
-            "mainEquipId": {
-                "name": "ID de l'Équipement Principal"
-            },
-            "totalPv2power": {
-                "name": "Puissance Totale PV2"
-            }
-        },
-        "number": {
-            "output_power": {
-                "name": "Puissance de Sortie"
-            },
-            "battery_threshold": {
-                "name": "Seuil de Batterie"
-            }
-        }
+    "abort": {
+      "already_configured": "Cette batterie est déjà configurée.",
+      "reauth_successful": "Réauthentification réussie.",
+      "reconfigure_successful": "Configuration mise à jour.",
+      "wrong_device": "Cet identifiant ne correspond pas à la batterie configurée."
     }
-} 
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Storcube",
+        "description": "Pour modifier vos identifiants, utilisez « Reconfigurer » sur l'entrée plutôt que ces options.",
+        "data": {
+          "rest_interval": "Intervalle d'interrogation de l'API (secondes)"
+        },
+        "data_description": {
+          "rest_interval": "Entre 15 et 600 secondes. Le flux temps réel passe par le WebSocket et n'est pas concerné."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery_level": { "name": "Niveau batterie" },
+      "battery_power": { "name": "Puissance batterie" },
+      "battery_temperature": { "name": "Température batterie" },
+      "battery_capacity_wh": { "name": "Capacité batterie" },
+      "battery_status": { "name": "État batterie" },
+      "battery_threshold": { "name": "Seuil batterie" },
+      "reserved": { "name": "Niveau de réserve" },
+      "solar_power": { "name": "Puissance solaire 1" },
+      "solar_power_2": { "name": "Puissance solaire 2" },
+      "solar_energy": { "name": "Énergie solaire 1" },
+      "solar_energy_2": { "name": "Énergie solaire 2" },
+      "solar_energy_total": { "name": "Énergie solaire totale" },
+      "output_power": { "name": "Puissance de sortie" },
+      "output_setpoint": { "name": "Consigne de sortie" },
+      "output_energy": { "name": "Énergie de sortie" },
+      "output_type": { "name": "Type de sortie" },
+      "work_status": { "name": "État de fonctionnement" },
+      "online_status": { "name": "État de connexion" },
+      "model": { "name": "Modèle" },
+      "serial_number": { "name": "Numéro de série" },
+      "firmware_version": { "name": "Version firmware" },
+      "firmware": { "name": "Firmware" }
+    },
+    "number": {
+      "output_power": { "name": "Puissance de sortie" },
+      "discharge_threshold": { "name": "Seuil de décharge" }
+    },
+    "binary_sensor": {
+      "connection": { "name": "Connexion" }
+    }
+  },
+  "services": {
+    "set_power": {
+      "name": "Régler la puissance de sortie",
+      "description": "Définit la consigne de puissance de sortie de la batterie StorCube.",
+      "fields": {
+        "power": {
+          "name": "Puissance",
+          "description": "Consigne de puissance en watts."
+        },
+        "device_id": {
+          "name": "Identifiant d'équipement",
+          "description": "Obligatoire uniquement si plusieurs entrées sont configurées."
+        }
+      }
+    },
+    "set_threshold": {
+      "name": "Régler le seuil de décharge",
+      "description": "Définit le niveau de charge en dessous duquel la batterie cesse de se décharger.",
+      "fields": {
+        "threshold": {
+          "name": "Seuil",
+          "description": "Seuil de décharge en pourcentage."
+        },
+        "device_id": {
+          "name": "Identifiant d'équipement",
+          "description": "Obligatoire uniquement si plusieurs entrées sont configurées."
+        }
+      }
+    },
+    "check_firmware": {
+      "name": "Vérifier le firmware",
+      "description": "Interroge l'API StorCube et retourne la version installée, la dernière version disponible et les notes de version.",
+      "fields": {
+        "device_id": {
+          "name": "Identifiant d'équipement",
+          "description": "Obligatoire uniquement si plusieurs entrées sont configurées."
+        }
+      }
+    }
+  }
+}

@@ -1,61 +1,89 @@
 """Capteur binaire pour l'intégration Storcube Battery Monitor."""
-import json
+from __future__ import annotations
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, ICON_CONNECTION
-from .coordinator import StorcubeDataUpdateCoordinator
+from .coordinator import StorCubeDataUpdateCoordinator
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Configurer le capteur binaire basé sur une entrée de configuration."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    """Configurer les capteurs binaires depuis une entrée de configuration."""
+    coordinator: StorCubeDataUpdateCoordinator = hass.data[DOMAIN][
+        config_entry.entry_id
+    ]
 
-    # Créer un capteur binaire pour chaque batterie
-    entities = []
-    for equip_id in coordinator.data:
-        entities.append(StorCubeBatteryConnectionSensor(coordinator, equip_id))
+    known: set[str] = set()
 
-    async_add_entities(entities)
+    @callback
+    def _async_add_new_devices() -> None:
+        """Créer les entités des batteries apparues depuis le dernier appel."""
+        new = [
+            StorCubeBatteryConnectionSensor(coordinator, equip_id)
+            for equip_id in (coordinator.data or {})
+            if equip_id not in known
+        ]
+        if new:
+            known.update(entity.equip_id for entity in new)
+            async_add_entities(new)
+
+    _async_add_new_devices()
+    config_entry.async_on_unload(
+        coordinator.async_add_listener(_async_add_new_devices)
+    )
+
 
 class StorCubeBatteryConnectionSensor(CoordinatorEntity, BinarySensorEntity):
-    """Capteur binaire pour l'état de la connexion de la batterie."""
+    """État de connexion d'une batterie StorCube."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_icon = ICON_CONNECTION
+    _attr_has_entity_name = True
+    _attr_name = "Connexion"
 
-    def __init__(self, coordinator: StorcubeDataUpdateCoordinator, equip_id: str) -> None:
+    def __init__(
+        self, coordinator: StorCubeDataUpdateCoordinator, equip_id: str
+    ) -> None:
         """Initialiser le capteur."""
         super().__init__(coordinator)
-        self._equip_id = equip_id
-        self._attr_unique_id = f"{equip_id}_connection"
-        self._attr_name = f"StorCube Battery {equip_id} Status"
+        self.equip_id = equip_id
+        self._attr_unique_id = f"{DOMAIN}_{equip_id}_connection"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Retourner les informations sur l'appareil."""
+        """Retourner les informations de l'appareil."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._equip_id)},
-            name=f"Batterie StorCube {self._equip_id}",
+            identifiers={(DOMAIN, self.equip_id)},
+            name=f"Batterie StorCube {self.equip_id}",
             manufacturer="StorCube",
         )
 
     @property
+    def available(self) -> bool:
+        """Indiquer si la batterie est présente dans les données."""
+        return super().available and self.equip_id in (self.coordinator.data or {})
+
+    @property
     def is_on(self) -> bool:
-        """Retourner l'état de la connexion."""
+        """Retourner True si la batterie est en ligne."""
+        data = (self.coordinator.data or {}).get(self.equip_id) or {}
+        value = data.get("battery_status")
+        # Tolère les valeurs héritées sérialisées en JSON.
+        if isinstance(value, dict):
+            value = value.get("value")
         try:
-            data = self.coordinator.data.get(self._equip_id, {}).get("battery_status", "{}")
-            value = json.loads(data).get("value", 0)
-            return value == 1
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            return False 
+            return int(value) == 1
+        except (TypeError, ValueError):
+            return False

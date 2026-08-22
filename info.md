@@ -1,50 +1,52 @@
 # Storcube Battery Monitor
 
-## Installation via HACS
+Intégration pour les batteries de balcon **STORCUBE S1000**, via l'API cloud
+Baterway. Prend en charge les stacks de plusieurs modules : chaque batterie
+devient un appareil distinct.
 
-1. **Prérequis** :
-   - [HACS](https://hacs.xyz/) doit être installé dans votre Home Assistant
-   - Un broker MQTT configuré et fonctionnel
-   - Vos identifiants Baterway (Login et Password)
-   - Le Device ID de votre batterie Storcube
+## Ce que vous obtenez
 
-2. **Ajout du dépôt** :
-   - Dans Home Assistant, ouvrez HACS
-   - Allez dans l'onglet "Intégrations"
-   - Cliquez sur le menu (3 points) en haut à droite
-   - Sélectionnez "Dépôts personnalisés"
-   - Collez l'URL : `https://github.com/jon7119/storcube_Ha`
-   - Choisissez la catégorie : "Integration"
-   - Cliquez sur "Ajouter"
+**Par batterie** — niveau de charge, température, capacité restante, état,
+numéro de série, version de firmware.
 
-3. **Installation** :
-   - Rafraîchissez la page HACS si nécessaire
-   - Recherchez "Storcube Battery Monitor"
-   - Cliquez sur "Télécharger"
-   - Redémarrez Home Assistant
+**Pour le stack** — puissance solaire par MPPT, puissance de sortie mesurée,
+charge/décharge de la batterie, quatre compteurs d'énergie compatibles avec le
+tableau de bord Énergie, seuil de décharge et état de fonctionnement.
 
-4. **Configuration** :
-   - Allez dans Configuration > Intégrations
-   - Cliquez sur "Ajouter une intégration"
-   - Recherchez "Storcube Battery Monitor"
-   - Remplissez les informations :
-     - Broker MQTT (ex: 192.168.1.xxx)
-     - Port MQTT (défaut: 1883)
-     - Device ID (sur l'étiquette de votre batterie)
-     - App Code (défaut: Storcube)
-     - Login Baterway
-     - Password Baterway
-     - Identifiants MQTT
+**En contrôle** — consigne de puissance de sortie (0–800 W) et seuil de
+décharge (0–100 %), plus trois services dont une vérification de firmware qui
+retourne ses résultats.
 
-## Capteurs disponibles
+## Avant d'installer
 
-- Niveau de batterie (%)
-- Puissance actuelle (W)
-- Seuil de batterie (%)
-- État de la batterie
-- Version du firmware
+Il vous faut le **compte de l'application mobile STORCUBE** — l'adresse e-mail
+complète et son mot de passe — ainsi que le numéro de série de la batterie
+maître. Ce ne sont ni les identifiants de Home Assistant, ni ceux d'un broker
+MQTT.
 
-## Support
+L'intégration est en `cloud_push` : tout transite par `baterway.com`. Aucune
+communication locale n'est possible, et une coupure Internet rend les entités
+indisponibles. L'intégration MQTT de Home Assistant est facultative.
 
-- [Documentation](https://github.com/jon7119/storcube_Ha)
-- [Signaler un problème](https://github.com/jon7119/storcube_Ha/issues) 
+## Après l'installation
+
+*Paramètres → Appareils et services → Ajouter une intégration →
+« Storcube Battery Monitor »*
+
+Une batterie ne peut être ajoutée qu'une fois. Si vous migrez depuis une
+version 1.2.x, **supprimez vos entrées existantes avant d'en recréer une** :
+les anciennes n'ont pas d'identifiant unique.
+
+## Bon à savoir
+
+Les esclaves d'un stack n'exposent ni solaire, ni sortie, ni seuil — l'API ne
+remonte ces grandeurs que pour la maître. C'est normal, pas un défaut de
+configuration.
+
+Pour le tableau de bord Énergie, n'utilisez que `Énergie solaire totale` en
+production : ajouter les compteurs 1 et 2 en plus compterait deux fois.
+
+---
+
+Documentation complète, dépannage et sémantique de l'API dans le
+[README](https://github.com/jon7119/storcube_Ha#readme).
